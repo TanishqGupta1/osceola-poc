@@ -51,64 +51,30 @@ Two visually distinct separator-card styles — both classify as `roll_separator
 
 ## Production architecture (Phase 2+)
 
+![Phase 2 sequence diagram](diagrams/phase2_arch.png)
+
+**Editable source:**
+- HTML (canonical): [`diagrams/phase2_arch.html`](diagrams/phase2_arch.html)
+- Figma (interactive): https://www.figma.com/design/mCTwHS2SO9073tSu1NI3yv
+
+<details>
+<summary>Mermaid fallback (collapsed)</summary>
+
 ```mermaid
 flowchart LR
-    S3IN["`**S3 Input**
-    servflow-image-one/.../Input/
-    new roll uploaded`"]
-
-    EB["`**EventBridge**
-    roll-ready rule`"]
-
-    SFN["`**Step Functions**
-    1 execution per roll`"]
-
-    DMAP["`**Distributed Map**
-    parallel over pages
-    (up to 1000 concurrent)`"]
-
-    LC["`**Lambda: classify_page**
-    Pillow TIF→PNG
-    Bedrock Haiku 4.5 Converse
-    tool_use schema`"]
-
-    LS["`**Lambda: sonnet_retry**
-    (conf 0.70–0.85)
-    Bedrock Sonnet 4.6`"]
-
-    DDB[("`**DynamoDB: pages**
-    pk=roll_id
-    sk=frame`")]
-
-    AGG["`**Lambda: aggregate_roll**
-    find START/END
-    name-change grouping
-    generate PDFs (pypdf)`"]
-
-    S3OUT["`**S3 Output**
-    Output/DISTRICT-X/ROLL-Y/
-    Last, First M.pdf`"]
-
-    SQS["`**SQS: hitl-queue**
-    low confidence frames`"]
-
-    HITL["`**HITL web app**
-    React + Cognito
-    API Gateway + Lambda
-    writes corrections → DDB`"]
-
-    S3IN --> EB --> SFN --> DMAP --> LC
-    LC -->|"conf ≥ 0.85"| DDB
-    LC -->|"conf 0.70–0.85"| LS --> DDB
-    LC -->|"conf < 0.70"| SQS
-    DMAP --> AGG
-    AGG --> DDB
-    AGG --> S3OUT
-    AGG --> SQS
-    SQS --> HITL
-    HITL --> DDB
-    HITL -->|"retrigger roll"| AGG
+    S3IN["S3 Input"] --> EB["EventBridge"] --> SFN["Step Functions"] --> LC["Lambda classify_page"]
+    LC <--> HAIKU["Bedrock Haiku 4.5"]
+    LC -->|"0.70-0.85 retry"| SONNET["Bedrock Sonnet 4.6"] --> LC
+    LC -->|"page result"| DDB[("DynamoDB")]
+    LC -->|"conf < 0.70"| SQS["SQS hitl-queue"]
+    SFN --> AGG["Lambda aggregate_roll"] --> DDB
+    AGG --> S3OUT[("S3 Output: PDFs")]
+    AGG -->|"flagged"| SQS
+    SQS --> HITL["HITL SPA"] --> DDB
+    HITL -->|"retrigger"| SFN
+    DDB -->|"streams"| AUD[("Athena audit")]
 ```
+</details>
 
 ### Accuracy strategy (target 90–95%)
 

@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Osceola Phase 2 — AWS Architecture (sequence)</title>
+<script src="https://mcp.figma.com/mcp/html-to-design/capture.js" async></script>
+<style>
+  :root {
+    --bg: #f8fafc;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #cbd5e1;
+    --ink-2: #334155;
+    --lane: #e2e8f0;
+    --phase1: #eff6ff;
+    --phase2: #fef9c3;
+    --phase3: #fce7f3;
+    --data: #0f172a;
+    --err: #dc2626;
+    --async: #64748b;
+    --success: #059669;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; color: var(--ink); }
+
+  .canvas {
+    position: relative;
+    width: 1800px;
+    height: 1300px;
+    margin: 0 auto;
+    background: #fff;
+    border: 1px solid var(--line);
+  }
+
+  .title {
+    position: absolute; top: 24px; left: 36px;
+    font-size: 26px; font-weight: 800; letter-spacing: -0.01em;
+  }
+  .subtitle {
+    position: absolute; top: 58px; left: 36px; right: 36px;
+    font-size: 13px; color: var(--muted);
+  }
+
+  /* phase backgrounds */
+  .phase {
+    position: absolute;
+    left: 36px; right: 36px;
+    border-radius: 10px;
+  }
+  .phase-label {
+    position: absolute; left: 14px; top: 10px;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--ink-2);
+  }
+  .ph1 { top: 230px; height: 420px; background: var(--phase1); }
+  .ph2 { top: 670px; height: 280px; background: var(--phase2); }
+  .ph3 { top: 970px; height: 260px; background: var(--phase3); }
+
+  /* lane header (column top) */
+  .lane-head {
+    position: absolute;
+    width: 140px;
+    top: 120px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 4px;
+  }
+  .lane-head .icon-wrap {
+    width: 58px; height: 58px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 1px 2px rgba(0,0,0,.06);
+  }
+  .lane-head .icon-wrap.compose {
+    border-style: dashed;
+    padding: 6px;
+    gap: 2px;
+    flex-wrap: wrap;
+    flex-direction: row;
+  }
+  .lane-head .icon-wrap img { width: 40px; height: 40px; }
+  .lane-head .icon-wrap.compose img { width: 20px; height: 20px; }
+  .lane-head .svc {
+    font-size: 9.5px; color: var(--muted);
+    letter-spacing: 0.04em; text-transform: uppercase;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+  .lane-head .name {
+    font-size: 12px; font-weight: 800; text-align: center;
+    line-height: 1.2;
+    max-width: 140px;
+  }
+
+  /* lane lifelines */
+  .lifeline {
+    position: absolute;
+    top: 225px;
+    height: 1010px;
+    width: 1px;
+    background: repeating-linear-gradient(to bottom, var(--lane), var(--lane) 4px, transparent 4px, transparent 8px);
+  }
+
+  /* Edges overlay */
+  .edges {
+    position: absolute; inset: 0;
+    pointer-events: none;
+  }
+  .edge {
+    fill: none;
+    stroke: var(--data);
+    stroke-width: 1.7;
+    marker-end: url(#arrow);
+  }
+  .edge.err   { stroke: var(--err);   stroke-dasharray: 6 4; marker-end: url(#arrow-err);   }
+  .edge.async { stroke: var(--async); stroke-dasharray: 3 4; marker-end: url(#arrow-async); }
+  .edge.retry { stroke: var(--data);  stroke-dasharray: 8 4; marker-end: url(#arrow); }
+  .edge.ok    { stroke: var(--success); marker-end: url(#arrow-ok); }
+  .edge-label {
+    font-size: 11px; font-weight: 500; fill: #334155;
+  }
+  .edge-label.err { fill: var(--err); }
+  .step-num {
+    font-size: 10px; font-weight: 800; fill: #0f172a;
+  }
+
+  /* legend */
+  .legend {
+    position: absolute; left: 36px; right: 36px; top: 86px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 6px 12px;
+    font-size: 11px;
+    display: flex; align-items: center; gap: 20px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.04);
+  }
+  .legend h4 { margin: 0; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-2); }
+  .legend .row { display: flex; align-items: center; gap: 6px; }
+  .legend .foot { margin-left: auto; color: var(--muted); font-style: italic; }
+
+  .tag {
+    position: absolute;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #fff;
+    color: var(--ink-2);
+    border: 1px solid var(--line);
+    font-weight: 600;
+  }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <div class="title">Osceola Phase 2 — Production Flow</div>
+  <div class="subtitle">Sequence view · 1 microfilm roll through the system · Bedrock Haiku 4.5 on us-west-2 · ~$490 one-time · ~1 hr end-to-end at 500 concurrent Lambdas</div>
+
+  <div class="legend">
+    <h4>Legend</h4>
+    <div class="row"><svg width="30" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#0f172a" stroke-width="2"/></svg>happy-path</div>
+    <div class="row"><svg width="30" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#dc2626" stroke-width="2" stroke-dasharray="6 4"/></svg>low-conf &rarr; HITL</div>
+    <div class="row"><svg width="30" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#64748b" stroke-width="2" stroke-dasharray="3 4"/></svg>async · streams · metrics</div>
+    <div class="row"><svg width="30" height="8"><line x1="0" y1="4" x2="28" y2="4" stroke="#0f172a" stroke-width="2" stroke-dasharray="8 4"/></svg>retry · retrigger</div>
+    <div class="foot">Time flows top &rarr; bottom &nbsp;·&nbsp; steps numbered in order</div>
+  </div>
+
+  <!-- PHASES (background bars) -->
+  <div class="phase ph1"><div class="phase-label">Phase A — Bulk processing (1 execution per roll)</div></div>
+  <div class="phase ph2"><div class="phase-label">Phase B — Aggregate + output</div></div>
+  <div class="phase ph3"><div class="phase-label">Phase C — HITL review + audit</div></div>
+
+  <!-- LANES (headers) · 11 columns ·
+       lane centers: 120, 270, 420, 570, 720, 870, 1020, 1170, 1320, 1470, 1620
+  -->
+  <div class="lane-head" style="left:50px;">
+    <div class="icon-wrap"><img src="icons/s3.svg"/></div>
+    <div class="svc">Amazon S3</div>
+    <div class="name">S3 Input</div>
+  </div>
+  <div class="lane-head" style="left:200px;">
+    <div class="icon-wrap"><img src="icons/eventbridge.svg"/></div>
+    <div class="svc">EventBridge</div>
+    <div class="name">roll-ready rule</div>
+  </div>
+  <div class="lane-head" style="left:350px;">
+    <div class="icon-wrap"><img src="icons/step-functions.svg"/></div>
+    <div class="svc">Step Functions</div>
+    <div class="name">orchestrator</div>
+  </div>
+  <div class="lane-head" style="left:500px;">
+    <div class="icon-wrap"><img src="icons/lambda.svg"/></div>
+    <div class="svc">AWS Lambda</div>
+    <div class="name">classify_page</div>
+  </div>
+  <div class="lane-head" style="left:650px;">
+    <div class="icon-wrap compose">
+      <img src="icons/bedrock.svg"/>
+      <img src="icons/bedrock.svg"/>
+    </div>
+    <div class="svc">Amazon Bedrock</div>
+    <div class="name">Haiku 4.5 + Sonnet 4.6</div>
+  </div>
+  <div class="lane-head" style="left:800px;">
+    <div class="icon-wrap"><img src="icons/dynamodb.svg"/></div>
+    <div class="svc">DynamoDB</div>
+    <div class="name">state store</div>
+  </div>
+  <div class="lane-head" style="left:950px;">
+    <div class="icon-wrap"><img src="icons/lambda.svg"/></div>
+    <div class="svc">AWS Lambda</div>
+    <div class="name">aggregate_roll</div>
+  </div>
+  <div class="lane-head" style="left:1100px;">
+    <div class="icon-wrap"><img src="icons/s3.svg"/></div>
+    <div class="svc">Amazon S3</div>
+    <div class="name">S3 Output (PDFs)</div>
+  </div>
+  <div class="lane-head" style="left:1250px;">
+    <div class="icon-wrap"><img src="icons/sqs.svg"/></div>
+    <div class="svc">Amazon SQS</div>
+    <div class="name">hitl-queue</div>
+  </div>
+  <div class="lane-head" style="left:1400px;">
+    <div class="icon-wrap compose">
+      <img src="icons/cloudfront.svg"/>
+      <img src="icons/cognito.svg"/>
+      <img src="icons/api-gateway.svg"/>
+      <img src="icons/lambda.svg"/>
+    </div>
+    <div class="svc">CloudFront · Cognito · API GW · Lambda</div>
+    <div class="name">HITL review SPA</div>
+  </div>
+  <div class="lane-head" style="left:1550px;">
+    <div class="icon-wrap compose">
+      <img src="icons/cloudwatch.svg"/>
+      <img src="icons/firehose.svg"/>
+      <img src="icons/athena.svg"/>
+    </div>
+    <div class="svc">CloudWatch · Firehose · Athena</div>
+    <div class="name">observability + audit</div>
+  </div>
+
+  <!-- lifelines (vertical dashed below each lane) -->
+  <div class="lifeline" style="left:120px;"></div>
+  <div class="lifeline" style="left:270px;"></div>
+  <div class="lifeline" style="left:420px;"></div>
+  <div class="lifeline" style="left:570px;"></div>
+  <div class="lifeline" style="left:720px;"></div>
+  <div class="lifeline" style="left:870px;"></div>
+  <div class="lifeline" style="left:1020px;"></div>
+  <div class="lifeline" style="left:1170px;"></div>
+  <div class="lifeline" style="left:1320px;"></div>
+  <div class="lifeline" style="left:1470px;"></div>
+  <div class="lifeline" style="left:1620px;"></div>
+
+  <!-- EDGES (numbered sequence steps) -->
+  <svg class="edges" width="1800" height="1300" viewBox="0 0 1800 1300" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="#0f172a"/>
+      </marker>
+      <marker id="arrow-err" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="#dc2626"/>
+      </marker>
+      <marker id="arrow-async" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 Z" fill="#64748b"/>
+      </marker>
+    </defs>
+
+    <!-- PHASE A (bulk processing): y 260 .. 620 -->
+
+    <!-- Step 1: S3 Input → EventBridge -->
+    <path class="edge" d="M120,280 L270,280"/>
+    <text class="step-num" x="130" y="274">1</text>
+    <text class="edge-label" x="148" y="274">PutObject: roll complete</text>
+
+    <!-- Step 2: EventBridge → Step Functions -->
+    <path class="edge" d="M270,330 L420,330"/>
+    <text class="step-num" x="280" y="324">2</text>
+    <text class="edge-label" x="298" y="324">trigger execution</text>
+
+    <!-- Step 3: Step Functions → classify_page (per page in Distributed Map) -->
+    <path class="edge" d="M420,380 L570,380"/>
+    <text class="step-num" x="430" y="374">3</text>
+    <text class="edge-label" x="448" y="374">map: 1 Lambda per page</text>
+
+    <!-- Step 4: classify_page → Bedrock (request) -->
+    <path class="edge" d="M570,430 L720,430"/>
+    <text class="step-num" x="580" y="424">4</text>
+    <text class="edge-label" x="598" y="424">image + tool_use prompt</text>
+
+    <!-- Step 5: Bedrock → classify_page (response) -->
+    <path class="edge" d="M720,470 L570,470"/>
+    <text class="step-num" x="580" y="464">5</text>
+    <text class="edge-label" x="598" y="464">JSON + confidence (0..1)</text>
+
+    <!-- Step 6a: classify_page → Bedrock (retry if mid-conf) -->
+    <path class="edge retry" d="M570,510 L720,510"/>
+    <text class="step-num" x="580" y="504">6</text>
+    <text class="edge-label" x="598" y="504">if 0.70 ≤ conf &lt; 0.85 — retry with Sonnet</text>
+
+    <!-- Step 7: classify_page → DynamoDB (write page result) -->
+    <path class="edge" d="M570,560 L870,560"/>
+    <text class="step-num" x="580" y="554">7</text>
+    <text class="edge-label" x="598" y="554">write page result  { class, student, conf }</text>
+
+    <!-- Step 8: classify_page → SQS (if conf < 0.70) -->
+    <path class="edge err" d="M570,610 L1320,610"/>
+    <text class="step-num" x="580" y="604">8</text>
+    <text class="edge-label err" x="598" y="604">if conf &lt; 0.70 — enqueue for HITL</text>
+
+    <!-- PHASE B (aggregate): y 700 .. 930 -->
+
+    <!-- Step 9: Step Functions → aggregate_roll (after map complete) -->
+    <path class="edge" d="M420,720 L1020,720"/>
+    <text class="step-num" x="430" y="714">9</text>
+    <text class="edge-label" x="448" y="714">after map complete — invoke aggregator</text>
+
+    <!-- Step 10: aggregate_roll → DynamoDB (query pages) -->
+    <path class="edge" d="M1020,770 L870,770"/>
+    <text class="step-num" x="880" y="764">10</text>
+    <text class="edge-label" x="900" y="764">query pages for roll</text>
+
+    <!-- Step 11: aggregate_roll → DynamoDB (write students) -->
+    <path class="edge" d="M1020,810 L870,810"/>
+    <text class="step-num" x="880" y="804">11</text>
+    <text class="edge-label" x="900" y="804">write grouped students</text>
+
+    <!-- Step 12: aggregate_roll → S3 Output (PDFs) -->
+    <path class="edge" d="M1020,860 L1170,860"/>
+    <text class="step-num" x="1030" y="854">12</text>
+    <text class="edge-label" x="1050" y="854">Last, First MI.pdf</text>
+
+    <!-- Step 13: aggregate_roll → SQS (flagged frames) -->
+    <path class="edge err" d="M1020,910 L1320,910"/>
+    <text class="step-num" x="1030" y="904">13</text>
+    <text class="edge-label err" x="1050" y="904">flagged packets → HITL</text>
+
+    <!-- PHASE C (HITL + audit): y 1000 .. 1220 -->
+
+    <!-- Step 14: SQS → HITL SPA (consume) -->
+    <path class="edge async" d="M1320,1020 L1470,1020"/>
+    <text class="step-num" x="1330" y="1014">14</text>
+    <text class="edge-label" x="1348" y="1014">operator consumes queue</text>
+
+    <!-- Step 15: HITL → DynamoDB (write corrections) -->
+    <path class="edge" d="M1470,1070 L870,1070"/>
+    <text class="step-num" x="878" y="1064">15</text>
+    <text class="edge-label" x="900" y="1064">operator corrections — write back</text>
+
+    <!-- Step 16: HITL → Step Functions (retrigger affected roll) -->
+    <path class="edge retry" d="M1470,1120 L420,1120"/>
+    <text class="step-num" x="428" y="1114">16</text>
+    <text class="edge-label" x="448" y="1114">retrigger affected roll (re-aggregate)</text>
+
+    <!-- Step 17: DynamoDB → Audit (streams, async) -->
+    <path class="edge async" d="M870,1170 L1620,1170"/>
+    <text class="step-num" x="880" y="1164">17</text>
+    <text class="edge-label" x="900" y="1164">DynamoDB Streams → Firehose → Parquet (Athena-queryable)</text>
+
+    <!-- Step 18: compute → CloudWatch (metrics, bundled) -->
+    <path class="edge async" d="M570,1220 L1620,1220"/>
+    <text class="step-num" x="580" y="1214">18</text>
+    <text class="edge-label" x="598" y="1214">metrics + alarms (all compute — SFN, both Lambdas, Bedrock usage, HITL depth)</text>
+
+  </svg>
+
+</div>
+</body>
+</html>
