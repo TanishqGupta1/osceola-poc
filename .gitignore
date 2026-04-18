@@ -1,0 +1,35 @@
+# Secrets
+.env
+.claude/settings.local.json
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# POC artifacts
+poc/output/
+
+# Local data — FERPA: do NOT commit real student records
+samples/**
+downloads/
+*.tif
+
+# Allow only curated public fixtures
+!samples/fixtures_public/
+!samples/fixtures_public/**
+
+# macOS
+.DS_Store
+
+# Large binary docs (SOW, scans)
+*.docx
+
+# IDE
+.vscode/
+.idea/
+image.png
