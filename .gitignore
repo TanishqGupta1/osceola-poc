@@ -33,3 +33,4 @@ downloads/
 .vscode/
 .idea/
 image.png
+.env.bedrock

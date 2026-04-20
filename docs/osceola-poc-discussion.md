@@ -2,6 +2,7 @@
 Originated: 2026-04-17
 Updated: 2026-04-18 (revised roll structure + taxonomy after boundary-sample probe)
 Updated: 2026-04-18 later (verification probe — 174 samples across 15 prod rolls + 3 dense mid-roll; two separator-card styles discovered; refined 218K-scale prod architecture)
+Updated: 2026-04-20 (full S3 inventory + bucket-config probe + ground-truth quality audit + model bake-off expansion)
 
 ---
 
@@ -48,11 +49,17 @@ Osceola Co School District/
 
 **File naming:** Every roll resets to `00001.tif` and counts up sequentially (e.g. `00001.tif` → `01924.tif`). All files are `.tif` only.
 
-**Estimated students:** ~218,677 TIFs ÷ 4.5 pages/student avg ≈ **~48,600 students** total.
+**Estimated students:** 218,577 TIFs ÷ ~5.1 pages/student avg ≈ **~43,000 students** (revised 2026-04-20 from D1 PDF/TIF size ratio; earlier 48,600 figure was based on 4.5 pages/student).
 
-**Roll size range:** 321 (ROLL 101, partial) to 2,665 (ROLL 034). Most rolls: 1,900–2,650 TIFs.
+**Roll size range:** 127 (ROLL 065B) to 2,665 (ROLL 034). Most rolls: 1,900–2,650 TIFs.
 
-**Notable gaps/partials:** ROLL 048 missing, ROLL 100 missing, ROLL 059=415, ROLL 039=1,235, ROLL 053=1,071, ROLL 065B=128, ROLL 075A=2,557.
+**Notable gaps/partials (verified 2026-04-20 full scan):** ROLL 048 missing, ROLL 100 missing, ROLL 059=414, ROLL 065B=127, ROLL 101=320, ROLL 075A=2,557. Split-roll naming convention (`NNNB`, `NNNA`) must be handled by regex — `\d{3}` alone is not sufficient.
+
+**Verified district counts (2026-04-20):** D1=22,179 (11 rolls), D2=39,289 (16), D3=29,700 (13), D4=46,312 (22), D5=28,672 (13), D6=34,476 (15), D7=17,949 (10). Total 218,577 ✓ matches SOW. Earlier CLAUDE.md counts were off by ~20 TIFs per district (stale estimates).
+
+**Total corpus size** ≈ 24 GB (median TIF 104 KB, mean 112 KB). Fits on a single EBS volume; not a big-data problem.
+
+**Test Input is not a held-out test set.** ETag comparison confirms `Test Input/ROLL 001|012|076/` are byte-identical copies of `Input/` equivalents. `Test Output/` is empty. We must curate our own eval holdout.
 
 ---
 
@@ -61,7 +68,7 @@ Osceola Co School District/
 | Decision | Choice |
 |---|---|
 | Cloud | AWS |
-| Vision model | Claude Haiku 4.5 on AWS Bedrock (`anthropic.claude-haiku-4-5`) |
+| Vision model | **TBD — bake-off pending** (see "Model bake-off" section). Previously locked to Claude Haiku 4.5; revised 2026-04-20 to include Amazon Nova Lite (~15× cheaper) + Nova Pro candidates. |
 | TIF→PNG conversion | `sips -s format png` (macOS built-in, in n8n Code Node) |
 | Textract | ❌ Skipped — Bedrock vision only |
 | Execution | **Pure n8n** workflow (self-hosted at `dev-n8n.visualgraphx.com`) |
@@ -108,13 +115,39 @@ Derived from viewing 20 evenly-spaced TIFs in Test Input ROLL 001 (April 17 prob
 
 ---
 
-## Ground Truth Available
+## Ground Truth Available (audit 2026-04-20)
 
-- **Output PDFs** in `s3://servflow-image-one/.../Output/` — human-produced filenames encode student names:
-  - `ACKLEY, CALVIN CHARLES.pdf`
-  - `(LAST) (FIRST) Burris, Tammy L.pdf`
-  - `) Boydston, Royer W.pdf` (malformed — also valid ground truth for edge cases)
-- Can match TIF sequence numbers back to output PDF names for extraction eval
+Output PDFs exist only for District 1, and even there coverage is partial:
+
+| Roll | N PDFs | UPPER clean | TitleCase | Placeholder (`(LAST)/(FIRST)/(MIDDLE)`) | `_N` dup | Other garbage |
+|---|---|---|---|---|---|---|
+| ROLL 001 | 419 | 118 | 117 | 45 (11%) | 10 | 129 |
+| ROLL 002 | 297 | 132 | 92 | 12 (4%) | 6 | 55 |
+| ROLL 007 | 488 | 103 | 164 | 76 (16%) | 11 | 134 |
+| ROLL 008 | 467 | 69 | 197 | 54 (12%) | 17 | 130 |
+| ROLL 009 | 483 | 61 | 193 | **90 (19%)** | 15 | 124 |
+| ROLL 010 | 500 | 47 | 238 | 80 (16%) | 16 | 119 |
+| ROLL 011 | 474 | 134 | 166 | 56 (12%) | 9 | 109 |
+| **real GT total** | **3,128** | | | **~14%** | **~3%** | **~25%** |
+| ROLL 003 | 1 (sham — 48 MB batch merge, exclude) | | | | | |
+| ROLL 005 | 2 (sham, exclude) | | | | | |
+| ROLL 006 | 1 (sham — 543 MB batch merge, exclude) | | | | | |
+
+**Districts 2–7: zero ground truth.** Processing dates 2026-03-05 to 2026-03-11 — operators may still be labeling D1 when POC runs against D2–7.
+
+Filename examples of the garbage/placeholder class (real observations):
+
+- `(LAST) (FIRST) MIDDLE) COUNTY. PLACE OF BIRTHth amb SEX E (CITY) Barton, Virginia Ley (COUNTY).pdf`
+- `611 Eblin Carl Byren (FIRST) (MIDDLE).pdf` (`611` is a page number, not a name)
+- `AN (LAST) (FIRST) (MIDDLE) Carry Shirley.pdf`
+- `Croft, Alice Alice Bett,.pdf`
+- `1959.pdf`
+- `Birtha.pdf`
+- `Clemons, Kathryn, Couretta (FIRST (MIDDLE).pdf`
+
+**Duplicates:** 3,131 unique filenames across 3,132 PDFs → `_N` suffix is a legitimate same-name marker, not a bug.
+
+**Eval implication:** any accuracy measurement against raw GT filenames systematically underestimates AI because ~15% of the GT itself is unreliable. POC **must include a GT-cleaning + filtering pass** before comparing predictions: strip `(LAST)/(FIRST)/(MIDDLE)` tokens, drop rows with embedded OCR artifacts (`BIRTH`, `COUNTY`, `SEX`, `PLACE OF BIRTH`, numeric-only names, lone `AN`/`611`-style prefixes), case-normalize, exclude ROLL 003/005/006.
 
 ---
 
@@ -397,6 +430,86 @@ The `roll_leader` frames carry rich per-roll metadata worth extracting once per 
 
 ---
 
+## Model bake-off (new — 2026-04-20)
+
+Primary vision model is no longer locked to Haiku 4.5. Decision rule (accuracy first, cost as tiebreaker):
+
+1. Hard gate: primary must hit **≥90% partial name match** on curated operator-labeled fixtures across all 7 districts.
+2. Among passers, pick cheapest.
+3. If no model passes, default to Haiku 4.5 + aggressive layering.
+
+Bake-off metric: per-class classification accuracy + per-page name Levenshtein distance vs cleaned ground truth.
+
+### Bedrock access (verified 2026-04-20)
+
+AWS account `690816807846` user `tanishq` has full Bedrock access in `us-west-2`. 125 models available. All vision candidates ACTIVE: `anthropic.claude-haiku-4-5-20251001-v1:0`, `anthropic.claude-sonnet-4-6`, `amazon.nova-lite-v1:0`, `amazon.nova-pro-v1:0`, `mistral.pixtral-large-2502-v1:0`. Amazon Nova Premier and Meta Llama 3.2 90B are LEGACY (still callable but deprecating).
+
+57 cross-region inference profiles available (`us.anthropic.*`, `us.amazon.*`, etc.). Use the `us.*` inference-profile IDs, not raw model IDs — raw model IDs fail `converse` with "on-demand not supported" errors for the newest models.
+
+The new account has **no S3 access** to `servflow-image-one` (403 Forbidden on `HeadBucket`). So the POC must load two env files: `.env` (Servflow-image1, S3) + `.env.bedrock` (tanishq, Bedrock).
+
+### Quick-check bake-off (2026-04-20 — 4 models × 5 samples)
+
+Ran `bedrock-runtime.converse` on 5 diverse fixtures (roll_leader, Style A separator, Style B separator, 2 student pages) with a minimal classify+extract prompt. Directional only — **5 samples is too few to bless a primary** but reveals clear signals.
+
+**Per-sample class accuracy:**
+
+| Sample | Haiku 4.5 | Sonnet 4.6 | Nova Lite | Nova Pro |
+|---|---|---|---|---|
+| Resolution target → roll_leader | ✓ | ✓ | ✓ | ✓ |
+| Style A clapperboard → roll_separator | ✓ | ✓ | ✓ | ✓ |
+| Style B certificate → roll_separator | ✗ leader | ✗ leader | ✗ leader | ✗ leader |
+| Student 00097 → student_* | ✓ cont | ✓ cont | ✓ cont | ✗ cover |
+| Student 00865 → student_* | ✓ cont | ✓ cont | ✓ cont | ✗ cover |
+
+**Name extraction on student 00865** (name visible top-left: Curtis Norman Cecil):
+- Haiku 4.5, Sonnet 4.6, Nova Pro: last=Curtis, first=Norman, middle=Cecil ✓
+- Nova Lite: last=**Norman**, first=**Curtis**, middle=Cecil — **swaps last/first**
+
+**Cost + latency extrapolated to 218K pages (avg tokens observed):**
+
+| Model | avg_in_tok | avg_out_tok | avg_ms | $/218K on-demand |
+|---|---|---|---|---|
+| Nova Lite | 2,230 | 50 | 1,681 | **~$32** |
+| Nova Pro | 2,230 | 46 | 1,532 | ~$422 |
+| Haiku 4.5 | 1,702 | 109 | 2,918 | ~$491 (~$245 batch) |
+| Sonnet 4.6 | 1,703 | 67 | 3,851 | ~$1,338 |
+
+Token-economics surprise: Amazon Nova tokenizes images ~30% higher than Claude per page, shrinking Nova Pro's headline price advantage to parity with Haiku 4.5. Earlier naive pricing table over-estimated Nova Pro savings.
+
+**Findings:**
+
+1. **Our `samples/fixtures_public/separator_styleB_certificate_START.png` is mis-labeled.** All 4 models identify it as vendor letterhead / `roll_leader` with notes "Total Information Management Systems Orlando." Real Style B samples in `verify_probe/png/d1r001_01923.png` must be used instead.
+2. **Nova Lite swaps last/first on student names.** High SOW-compliance risk since name is the only contractually-required field.
+3. **Nova Pro confuses cover vs continuation** and shows no cost advantage over Haiku 4.5 at observed token counts.
+4. **Nova Lite mis-calibrated confidence** — reports `0.1` on 3/5 correctly-classified pages. Would trigger unnecessary HITL routing.
+5. **Haiku 4.5 output wraps JSON in `\`\`\`json` fences** — needs stripping. Sonnet 4.6 returns clean JSON.
+
+**Provisional recommendation** (subject to ≥50-sample confirmation):
+- **Primary:** Claude Haiku 4.5 (us.anthropic.claude-haiku-4-5-20251001-v1:0), Batch Inference for bulk. Use `tool_use` to avoid JSON-fence wrapping.
+- **Retry tier:** Claude Sonnet 4.6 on mid-confidence (0.6–0.85) + primary/retry disagreement.
+- **Drop** Nova Lite + Nova Pro + Pixtral + Llama 3.2 from consideration.
+
+Before locking, re-run bake-off on ≥50 operator-labeled fixtures with a corrected Style B sample.
+
+## Architecture redesign gaps — observed 2026-04-20
+
+Current design (see `docs/superpowers/specs/2026-04-18-osceola-phase1-poc-design.md`) has these weaknesses relative to scale + SOW + ground-truth audit:
+
+1. **Single-model pipeline, no retry tier** — current POC spec drops Sonnet fallback for simplicity. At 218K scale that is the wrong call; retry tier costs little and materially lifts accuracy.
+2. **Self-reported confidence only** — no cross-validation, no deterministic check, no packet-level name reconciliation. Majority-vote across a packet's ~5 pages is a free accuracy lever.
+3. **Ground-truth eval assumes clean filenames** — spec's `parse_pdf_filename` drops placeholders but does not handle embedded OCR garbage. Under-rates AI against noisy GT.
+4. **POC evaluates ROLL 001 only** — cannot detect district-specific prompt failures (e.g., Style B certificate separator mis-classification in D1+D3).
+5. **Roll-ID regex** (`\d{3}`) will miss `ROLL 065B`, `ROLL 075A`. Minor but real.
+6. **No deterministic pre-classifier** — template-hash / pHash against exemplar library of the ~8 known form types could skip LLM on 60–80% of frames. Significant cost + speed lever left on table.
+7. **Missing/split rolls not encoded** — no roll manifest that tracks gaps (048, 100) or split rolls (065B, 075A) for downstream accounting.
+8. **No idempotency key** — reruns duplicate work in DynamoDB / Bedrock calls.
+9. **No DLQ / poison-message handling** — any single-page failure can stall a roll aggregator in the current Phase 2 sketch.
+10. **Bedrock throughput quota not measured** — `us-west-2` Haiku 4.5 on-demand quota unknown. Bulk 218K run could hit throttles.
+11. **Reel-number cross-reference manifest missing** — S3 roll numbers and physical certification reel numbers diverge (e.g. S3 ROLL 101 = Reel 756). Downstream users need a lookup table.
+
+These drive the v2 architecture redesign underway (spec: `docs/superpowers/specs/2026-04-20-osceola-arch-redesign.md` — in draft).
+
 ## Open Questions
 
 1. **Approach:** Which of A/B/C above? (Recommendation: A — Python POC first)
@@ -412,6 +525,9 @@ The `roll_leader` frames carry rich per-roll metadata worth extracting once per 
 8. **[new 2026-04-18 verification] Production orchestration:** Step Functions Distributed Map (recommended) vs Batch on Fargate vs n8n. Current decision: SFN for bulk, n8n for HITL. Needs sign-off before Phase 2 build.
 9. **[new 2026-04-18 verification] Bedrock access:** the current IAM user (`Servflow-image1`) lacks `bedrock:*` permissions — attempted `ListFoundationModels` returned AccessDenied. Need a Bedrock-enabled IAM role (or a new key) before any POC LLM work can start.
 10. **[new 2026-04-18 verification] Bulk inference path:** Bedrock Batch Inference (~$225, async, 50% discount) vs on-demand (~$450, faster). Recommend Batch for bulk 218K run; on-demand for HITL retries.
+11. **[new 2026-04-20] Model bake-off:** test Amazon Nova Lite + Nova Pro + Claude Haiku 4.5 on operator-labeled fixture set before locking primary. Accept the cheapest model meeting a defined accuracy threshold.
+12. **[new 2026-04-20] Eval set curation:** since Districts 2–7 have zero ground truth and Test Input is a byte-identical copy of Input, we need an operator to hand-label ~100–200 pages across all 7 districts to get a real multi-district accuracy signal.
+13. **[new 2026-04-20] GT cleaning:** confirm with the client that it is acceptable to drop rows with embedded OCR garbage (`BIRTH`, `COUNTY`, numeric-only names, etc.) from the eval comparison baseline — otherwise AI accuracy will be systematically under-reported against noisy GT.
 
 ---
 

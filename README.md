@@ -1,10 +1,16 @@
 # Osceola POC — Student Records AI Pipeline
 
-AI pipeline to classify and extract data from **~218,677 TIF scans** of student records on S3, producing named PDFs per student (`Last, First Name MI.pdf`) grouped into their original microfilm roll folders.
+AI pipeline to classify and extract data from **218,577 TIF scans** (verified via full S3 inventory, matches SOW exactly) of student records on S3, producing named PDFs per student (`Last, First Name MI.pdf`) grouped into their original microfilm roll folders.
 
 Client: Osceola County School District.
 Source: `s3://servflow-image-one/Osceola Co School District/` (us-west-2).
-Model: Claude Haiku 4.5 on AWS Bedrock. Vision only — no Textract.
+Model: TBD pending bake-off — candidates include Amazon Nova Lite, Nova Pro, Claude Haiku 4.5. Bedrock vision only — no Textract.
+
+**Data notes (2026-04-20 audit):**
+- 100 rolls across 7 districts. Gaps: ROLL 048, 100. Splits: 065B, 075A. Partials: 059, 101.
+- Ground truth exists for **D1 only** (7 rolls, 3,128 real PDFs). Districts 2–7 have zero ground truth.
+- `Test Input/` is byte-identical to `Input/ROLL 001|012|076/` — not a held-out test set. `Test Output/` is empty.
+- ~14% of ground-truth filenames have placeholder tokens or embedded OCR garbage — eval must apply a cleaning pass first.
 
 ---
 
@@ -12,7 +18,7 @@ Model: Claude Haiku 4.5 on AWS Bedrock. Vision only — no Textract.
 
 ~218K TIF images, one per scanned microfilm frame, across 7 districts × 101 rolls (≈2,000 frames per roll). Each roll is a linear scan of a physical 1991–92 microfilm reel. Student packets are back-to-back with no per-student separator pages — boundaries must be inferred from name changes. Two different filming vendors used different leader + separator-card layouts.
 
-Output target: ~48,600 student PDFs, named `Last, First MI.pdf`, one per student, with 90–95% name-extraction accuracy and a human-in-the-loop queue for low-confidence cases.
+Output target: **~43,000 student PDFs** (revised 2026-04-20 from D1 PDF/TIF size ratio at ~5.1 pages/student; earlier 48,600 figure was based on a 4.5-pages estimate), named `Last, First MI.pdf`, one per student, with 90–95% name-extraction accuracy and a human-in-the-loop queue for low-confidence cases.
 
 ---
 
