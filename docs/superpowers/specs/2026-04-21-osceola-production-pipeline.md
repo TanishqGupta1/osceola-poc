@@ -167,7 +167,7 @@ osceola-pipeline/
 │   ├── schemas.py                # pydantic models
 │   ├── db.py                     # SQLite schema + typed queries (single writer)
 │   ├── s3io.py                   # Servflow-image1 client (streaming + signed URLs)
-│   ├── bedrock.py                # Converse wrapper (tool_use, retry, throttle)
+│   ├── bedrock.py                # Converse wrapper — ALL calls go through converse_tracked() which logs every invocation to SQLite.bedrock_calls with tokens + cost + latency + stop_reason + error
 │   ├── convert.py                # TIF → PNG bytes (Pillow)
 │   ├── prompts.py                # CLASSIFY_PROMPT, INDEX_PARSE_PROMPT, tool schemas
 │   │
@@ -332,11 +332,163 @@ CREATE TABLE run_log (
   page_id              TEXT,
   message              TEXT NOT NULL
 );
+
+CREATE TABLE bedrock_calls (
+  call_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts                   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  purpose              TEXT NOT NULL,                 -- classify | retry | index_parse | index_prior
+  model_id             TEXT NOT NULL,                 -- full inference-profile ID (e.g. us.anthropic.claude-haiku-4-5-20251001-v1:0)
+  mode                 TEXT NOT NULL CHECK(mode IN ('on_demand','batch')) DEFAULT 'on_demand',
+  roll_id              TEXT,
+  page_id              TEXT,
+  retry_attempt        INTEGER NOT NULL DEFAULT 0,    -- 0 = primary, 1+ = retries after throttle
+  tokens_in            INTEGER NOT NULL DEFAULT 0,
+  tokens_out           INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens    INTEGER NOT NULL DEFAULT 0,    -- prompt-cache reads if used (future)
+  cache_write_tokens   INTEGER NOT NULL DEFAULT 0,
+  usd_in               REAL NOT NULL DEFAULT 0.0,     -- computed at insert time
+  usd_out              REAL NOT NULL DEFAULT 0.0,
+  usd_total            REAL NOT NULL DEFAULT 0.0,
+  latency_ms           INTEGER NOT NULL DEFAULT 0,
+  stop_reason          TEXT,                          -- tool_use | end_turn | max_tokens | throttling | error
+  error                TEXT                           -- NULL unless call failed
+);
+CREATE INDEX idx_bc_ts       ON bedrock_calls(ts);
+CREATE INDEX idx_bc_roll     ON bedrock_calls(roll_id, ts);
+CREATE INDEX idx_bc_page     ON bedrock_calls(page_id);
+CREATE INDEX idx_bc_model    ON bedrock_calls(model_id);
+CREATE INDEX idx_bc_purpose  ON bedrock_calls(purpose);
 ```
+
+`bedrock_calls` is the source of truth for every Bedrock invocation. Every Converse call — classify, retry, index parse, index prior — inserts one row before returning to the caller. Throttled retries each get their own row with `retry_attempt` incremented. Failed calls still insert a row with `error` populated and `tokens_in=tokens_out=0` so cost math is honest.
+
+The `tokens_in`/`tokens_out`/`cost_usd` columns on `rolls` and `pages` are denormalized caches for fast dashboard queries — computed by a trigger or an explicit `db.refresh_roll_totals(roll_id)` call after each roll finishes. Ground truth always lives in `bedrock_calls`.
 
 No budget table, no migrations, no packet status beyond what's used. Keep it lean.
 
 ---
+
+## Bedrock call tracking (every invocation logged)
+
+Every Bedrock Converse call flows through `osceola/bedrock.py::converse_tracked()`. Wrapper is the ONLY legal way to hit Bedrock — naked `client.converse()` is banned by code review.
+
+Pricing table in `osceola/config.py`:
+
+```python
+BEDROCK_PRICING = {
+    # (input_usd_per_mtok, output_usd_per_mtok)
+    # On-demand rates us-west-2 (2026-04):
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0":            (1.00,  5.00),
+    "us.anthropic.claude-sonnet-4-6":                         (3.00, 15.00),
+    # Batch Inference 50% discount (use when mode='batch'):
+    "us.anthropic.claude-haiku-4-5-20251001-v1:0::batch":     (0.50,  2.50),
+    "us.anthropic.claude-sonnet-4-6::batch":                  (1.50,  7.50),
+}
+```
+
+Wrapper contract (pseudocode):
+
+```python
+def converse_tracked(
+    *,
+    purpose: Literal["classify","retry","index_parse","index_prior"],
+    model_id: str,
+    mode: Literal["on_demand","batch"] = "on_demand",
+    roll_id: str | None = None,
+    page_id: str | None = None,
+    retry_attempt: int = 0,
+    **converse_kwargs,
+) -> dict:
+    t0 = time.monotonic()
+    tokens_in = tokens_out = 0
+    stop_reason = error = None
+    try:
+        resp = bedrock_client.converse(modelId=model_id, **converse_kwargs)
+        usage = resp.get("usage", {})
+        tokens_in  = usage.get("inputTokens", 0)
+        tokens_out = usage.get("outputTokens", 0)
+        stop_reason = resp.get("stopReason")
+        return resp
+    except ClientError as e:
+        error = f"{e.response['Error']['Code']}: {str(e)[:200]}"
+        stop_reason = "error"
+        raise
+    finally:
+        key = f"{model_id}::{mode}" if mode != "on_demand" else model_id
+        in_rate, out_rate = BEDROCK_PRICING[key]
+        usd_in  = tokens_in  / 1e6 * in_rate
+        usd_out = tokens_out / 1e6 * out_rate
+        db.insert_bedrock_call({
+            "purpose": purpose, "model_id": model_id, "mode": mode,
+            "roll_id": roll_id, "page_id": page_id,
+            "retry_attempt": retry_attempt,
+            "tokens_in": tokens_in, "tokens_out": tokens_out,
+            "usd_in": usd_in, "usd_out": usd_out, "usd_total": usd_in + usd_out,
+            "latency_ms": int((time.monotonic() - t0) * 1000),
+            "stop_reason": stop_reason, "error": error,
+        })
+```
+
+Key properties:
+- **Every call is logged**, including throttled retries (distinct rows with incrementing `retry_attempt`).
+- **Failed calls logged** too (tokens=0, `error` populated) — so retry-rate is observable.
+- **Cost computed at insert** — no deferred math, no rate-change drift in history.
+- **Unit-testable**: pass a mocked `bedrock_client`, inspect `db.insert_bedrock_call` fixtures.
+- **Live budget guard**: a ~50-line async task runs `SELECT SUM(usd_total) FROM bedrock_calls` every 60 s and halts workers if over ceiling.
+
+### Useful cost queries
+
+Available as `osceola/report.py::cost_queries`:
+
+```sql
+-- Total spend
+SELECT SUM(usd_total) FROM bedrock_calls;
+
+-- By model
+SELECT model_id, COUNT(*) AS calls, SUM(tokens_in), SUM(tokens_out), SUM(usd_total)
+FROM bedrock_calls GROUP BY model_id ORDER BY SUM(usd_total) DESC;
+
+-- By purpose (classify vs retry vs index_parse vs index_prior)
+SELECT purpose, COUNT(*), SUM(usd_total), AVG(latency_ms)
+FROM bedrock_calls GROUP BY purpose;
+
+-- By roll (find expensive rolls)
+SELECT roll_id, COUNT(*) AS calls, SUM(usd_total) AS spend
+FROM bedrock_calls GROUP BY roll_id ORDER BY spend DESC LIMIT 20;
+
+-- Error rate
+SELECT model_id, stop_reason,
+       COUNT(*) AS n,
+       ROUND(100.0*COUNT(*)/SUM(COUNT(*)) OVER(PARTITION BY model_id), 2) AS pct
+FROM bedrock_calls GROUP BY model_id, stop_reason;
+
+-- Hour-by-hour burn rate
+SELECT strftime('%Y-%m-%d %H:00', ts) AS hour,
+       COUNT(*), SUM(usd_total), SUM(tokens_in), SUM(tokens_out)
+FROM bedrock_calls GROUP BY hour ORDER BY hour;
+
+-- Retry amplification (how many calls per unique page?)
+SELECT page_id, COUNT(*) AS calls, SUM(usd_total)
+FROM bedrock_calls WHERE page_id IS NOT NULL
+GROUP BY page_id HAVING COUNT(*) > 1
+ORDER BY calls DESC LIMIT 30;
+
+-- Throttle/error history
+SELECT ts, model_id, purpose, error
+FROM bedrock_calls WHERE error IS NOT NULL ORDER BY ts DESC LIMIT 100;
+```
+
+### Final report
+
+`osceola/report.py` consumes `bedrock_calls` to auto-generate `report.md` at end of bulk:
+- Total spend vs budgeted.
+- Per-model breakdown (Haiku vs Sonnet, call counts + tokens + $).
+- Per-purpose breakdown (classify vs retry vs index_parse vs index_prior).
+- Throttle / error counts.
+- Top 10 most-expensive rolls.
+- Cost per page (for future capacity planning).
+
+Ship this `report.md` + `osceola.db` to client at end of run for full cost transparency.
 
 ## Bedrock prompts
 
@@ -377,7 +529,8 @@ python -m osceola dry-run ROLL_001            # ROLL 001 end-to-end, single-roll
 python -m osceola run-roll "OSCEOLA SCHOOL DISTRICT-4/ROLL 045"
 python -m osceola run-all [--districts 1,2,3] [--concurrency 30]
 python -m osceola aggregate ROLL_ID           # aggregate-only (re-run after HITL resolution)
-python -m osceola report                      # generate global report.md
+python -m osceola report                      # generate global report.md (consumes bedrock_calls for cost breakdown)
+python -m osceola cost                         # quick CLI cost summary (totals, by model, by purpose, by roll)
 streamlit run osceola/hitl.py                 # HITL UI
 ```
 
@@ -508,3 +661,4 @@ Pytest markers: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.s
 
 - 2026-04-21 v1: full spec with FastAPI + Caddy + n8n + Docker-compose + Prometheus.
 - 2026-04-21 v2 (this doc, simplified): single Python process, CLI-driven, SQLite-only state, Streamlit HITL via SSH tunnel. Drop FastAPI / Caddy / n8n / Prometheus / Alembic / multi-container. Same accuracy stack, same deliverables, fewer moving parts. ~2,000 LOC weekend build.
+- 2026-04-21 v2.1: added `bedrock_calls` SQLite table + mandatory `converse_tracked()` wrapper. Every Bedrock invocation (classify, retry, index_parse, index_prior, even failed/throttled) logs one row with tokens, cost computed at insert time, latency, stop_reason. Enables live budget guard, per-roll/per-purpose/per-model cost breakdowns, retry amplification queries, and client-facing cost transparency in `report.md`. `python -m osceola cost` CLI exposes quick summaries.
