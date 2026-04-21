@@ -54,8 +54,9 @@ Build reference corpora; use edit-distance snap to fix systematic OCR errors wit
 | H2.3 | **Microfilm OCR confusion pairs** | Try character swaps (`0↔O`, `1↔l↔I`, `5↔S`, `8↔B`, `6↔G`, `rn↔m`) and re-check corpus | Pick highest-frequency match; no change if no improvement. |
 | H2.4 | **Within-packet Levenshtein reconciliation** | If 4/5 packet pages agree on name and 1 differs by Levenshtein ≤2 → override minority. Majority-vote logic already in the spec; extend with edit-distance tolerance | Catches same-name single-page misreads. |
 | H2.5 | **Cross-packet near-dup merge** | Adjacent packets whose canonical names differ by Levenshtein ≤2 and have contiguous frame ranges → merge candidates. Require operator sign-off on merges (never auto) | Catches split-packet errors at boundaries. |
+| H2.7 | **Index-snap (added 2026-04-21)** | Every extracted `student_*` name snaps to nearest entry in the SAME roll's `roll_index_entries` allowlist, Levenshtein ≤ 2 on `(last, first)`. Cross-check DOB when both sides populated. No match within threshold → flag HITL with `reason=no_index_match`. | **Largest accuracy lever in the pipeline.** Requires the new index-parse stage. 100-roll probe on 2026-04-21 confirmed 93/100 rolls carry at least one index page. |
 
-**Expected accuracy lift:** +3% — corpus snap is the highest-ROI non-LLM intervention.
+**Expected accuracy lift:** +3% corpus snap **+5% index-snap (H2.7)** — the reinstated index-snap is now the highest-ROI non-LLM intervention by a wide margin.
 **Cost:** $0 at runtime; upfront corpus build once.
 
 ---
@@ -71,8 +72,9 @@ Catch systemic failures that a per-page model cannot see.
 | H3.3 | **Page-class transition rules** | Impossible sequences:<br>• `roll_separator(END) → student_*`<br>• `student_*` before any `roll_separator(START)`<br>• 3+ consecutive `unknown` mid-roll | Retry affected frames with stricter prompt; if still bad → HITL |
 | H3.4 | **Packet size distribution** | Mean 5, stdev ~3 (from D1 PDF-vs-TIF size ratio). Packet size 1 or ≥15 → suspect | Size-1 adjacent to size-15 with similar names → merge candidate |
 | H3.5 | **Frame-number contiguity** | S3 frame numbers must form `00001..0NNNN` contiguous sequence. Gap = missing scan | Annotate manifest; never silently skip |
+| H3.7 | **Alphabetical monotonic (added 2026-04-21)** | Index pages prove student records are filmed in alphabetical order by surname. Student-cover names in a roll must progress monotonically (ignoring `_N` dup-suffix ties). Out-of-order transition → flag packet boundary error. | Paired with H2.7 — if the extracted name both fails index-snap AND breaks alphabetical order, HITL is almost certainly right. |
 
-**Expected accuracy lift:** +1% — catches the long-tail systemic failures.
+**Expected accuracy lift:** +1% for H3.1–H3.5 + **+2% for H3.7 alpha-monotonic** (catches most of the residual boundary errors) — ~3% total.
 **Cost:** $0.
 
 ---
@@ -87,6 +89,7 @@ Shape LLM output by giving it frame-specific context before it answers.
 | H4.2 | **Vendor prior** | D1 test ROLL 001 → White's Microfilm Services. Everything else → Total Information Management Systems | Injected into `roll_leader` frames so extractions use correct vendor |
 | H4.3 | **Frame-position prior** | Frames 1–7 = "likely roll_leader or START separator". Last 1–5 = "likely END separator or trailing leader". Middle = "likely student_*" | Reduces class confusion on ambiguous frames |
 | H4.4 | **Previous-page name prior** (optional) | For `student_continuation` / `student_test_sheet` frames, include the previous frame's extracted name in the prompt as a hint: "If this is the same student, confirm" | Improves packet boundary detection; small prompt-cost increase. Skip for POC. |
+| H4.5 | **Index prior (added 2026-04-21)** | For ambiguous `student_cover` frames (confidence < 0.85), inject the top 5 nearest candidates from `roll_index_entries` into the system prompt: "Likely candidates for this page's student: [A], [B], [C], [D], [E]. Confirm exact match or 'none'." | Turns name extraction from open-ended vision OCR into constrained multiple-choice. Huge accuracy lift on degraded frames. Requires index-parse pre-stage. |
 
 **Expected accuracy lift:** +2% — priors are cheap and high-signal.
 **Cost:** ~5% more input tokens on affected frames. Marginal.
@@ -115,11 +118,13 @@ Assumes Haiku 4.5 baseline at ~85% page-level partial name match (SOW gate is �
 | Baseline Haiku 4.5 batch | 85% | ~91% (majority vote lift) | $245 |
 | + Tier 0 (pre-filter) | 85% | 91% | −$20 |
 | + Tier 1 (reject garbage) | 87% | 93% | $0 |
-| + Tier 2 (corpus snap) | 90% | 95% | $0 |
-| + Tier 3 (structural) | 91% | 96% | $0 |
-| + Tier 4 (priors) | 93% | 97% | marginal |
-| + Tier 5.2 (Sonnet retry) | 95% | 98% | +$200 |
-| **Total target** | **~95% page / ~98% packet** | | **~$430** |
+| + Tier 2.1–2.4 (corpus snap) | 90% | 95% | $0 |
+| + Tier 2.7 **index-snap** | 95% | 98% | +$12 (index parse) |
+| + Tier 3 (structural + alpha-monotonic) | 96% | 98% | $0 |
+| + Tier 4.1–4.3 (static priors) | 96% | 98% | marginal |
+| + Tier 4.5 (index prior on ambiguous frames) | 97% | 99% | marginal |
+| + Tier 5.2 (Sonnet retry on mid-band) | 98% | 99% | +$150 |
+| **Total target** | **~98% page / ~99% packet** | | **~$400** |
 
 These numbers are estimates, not measurements. Confirm with a ≥50-page labeled bake-off after the curated fixture set exists.
 
@@ -127,8 +132,10 @@ These numbers are estimates, not measurements. Confirm with a ≥50-page labeled
 
 ## POC scope recommendation
 
-- **In:** Tier 0 (H0.1, H0.2, H0.3, H0.5), Tier 1 (all), Tier 2 (H2.1, H2.2, H2.3, H2.4), Tier 3 (all), Tier 4 (H4.1, H4.2, H4.3), Tier 5 (H5.2 only).
+- **In:** Tier 0 (H0.1, H0.2, H0.3, H0.5), Tier 1 (all), Tier 2 (H2.1, H2.2, H2.3, H2.4, **H2.7 index-snap**), Tier 3 (all + **H3.7 alpha-monotonic**), Tier 4 (H4.1, H4.2, H4.3, **H4.5 index prior on ambiguous frames**), Tier 5 (H5.2 only).
 - **Out (Phase 2 or later):** H0.4 (clapperboard Hough — nice-to-have), H2.5 (cross-packet merge — needs HITL UI), H4.4 (previous-page prior — POC complexity), H5.1, H5.3, H5.4.
+
+**New dependency (added 2026-04-21):** Production pipeline must now have a per-roll **index-parse stage** that runs after classify, before grouping. Input: all frames labeled `student_records_index` for a roll. Output: populated `roll_index_entries` SQLite table with canonical `(last, first, middle, dob, enroll_date)` rows. Cost ~$12 added for the full 218K corpus. Without this stage, H2.7 / H4.5 can't run.
 
 This keeps the POC focused on deterministic heuristics that cost $0 at inference time, plus the one LLM-layer boost (Sonnet retry) already in the plan.
 

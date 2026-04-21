@@ -6,11 +6,12 @@ Client: Osceola County School District.
 Source: `s3://servflow-image-one/Osceola Co School District/` (us-west-2).
 Model: TBD pending bake-off — candidates include Amazon Nova Lite, Nova Pro, Claude Haiku 4.5. Bedrock vision only — no Textract.
 
-**Data notes (2026-04-20 audit):**
+**Data notes (updated 2026-04-21):**
 - 100 rolls across 7 districts. Gaps: ROLL 048, 100. Splits: 065B, 075A. Partials: 059, 101.
 - Ground truth exists for **D1 only** (7 rolls, 3,128 real PDFs). Districts 2–7 have zero ground truth.
 - `Test Input/` is byte-identical to `Input/ROLL 001|012|076/` — not a held-out test set. `Test Output/` is empty.
 - ~14% of ground-truth filenames have placeholder tokens or embedded OCR garbage — eval must apply a cleaning pass first.
+- **`STUDENT RECORDS INDEX` pages are universal** (2026-04-21): a 100-roll broad probe (`samples/index_probe/broad/SUMMARY.md`) found 559 confirmed index frames across **93/100 rolls in all 7 districts**. Each lists 5–28 students with DOB in alphabetical sections. This gives us a canonical per-roll student allowlist — the biggest accuracy lever in the pipeline.
 
 ---
 

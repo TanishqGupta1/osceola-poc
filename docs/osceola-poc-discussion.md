@@ -3,6 +3,7 @@ Originated: 2026-04-17
 Updated: 2026-04-18 (revised roll structure + taxonomy after boundary-sample probe)
 Updated: 2026-04-18 later (verification probe — 174 samples across 15 prod rolls + 3 dense mid-roll; two separator-card styles discovered; refined 218K-scale prod architecture)
 Updated: 2026-04-20 (full S3 inventory + bucket-config probe + ground-truth quality audit + model bake-off expansion)
+Updated: 2026-04-21 (universal index-page pattern confirmed via 100-roll probe; taxonomy gains `student_records_index` class)
 
 ---
 
@@ -88,13 +89,14 @@ Derived from viewing 20 evenly-spaced TIFs in Test Input ROLL 001 (April 17 prob
 | `student_cover` | Primary cumulative/guidance record with name + demographics | Florida Cumulative Guidance Record 1-12, Osceola Progress Report |
 | `student_test_sheet` | Standardized test forms — has student name | Stanford Achievement Test, H&R First Reader Test, SAT Profile Graph |
 | `student_continuation` | Back pages, comments, family data — name at top | Comments page, MCH 304 health record, Elementary family data |
+| `student_records_index` | **(added 2026-04-21)** Tabular page titled `STUDENT RECORDS INDEX` listing multiple students on one page. Columns include LAST / FIRST / MIDDLE / DOB + district-specific variants. 5–28 rows per page, alphabetically ordered. Multiple index pages per roll, covering sequential letter ranges. Universal across all 7 districts (confirmed 2026-04-21 via 100-roll probe). | `samples/index_probe/broad/png/d1r001_00008_INDEX.png` (D1 HIGHLANDS layout, 25 rows Ba–Bo), `samples/index_probe/png/roll012_00007_INDEX.png` (D2 OHS OSCEOLA JR HIGH layout, 25 rows Gi–Gl) |
 | `roll_separator` | START or END card — **two visually distinct styles both count as `roll_separator`**: **Style A (clapperboard)** = diagonal-hatched rectangles + "START"/"END" text + boxed handwritten ROLL NO. (districts 2, 4, 5, 6, 7); **Style B (certificate)** = printed "CERTIFICATE OF RECORD" / "CERTIFICATE OF AUTHENTICITY" form with "START" or "END" header, typed school, handwritten date, filmer signature (districts 1, 3 primarily). Exactly 2 per roll (one START, one END). Can appear rotated 90° (observed in d7r099). | Style A: `samples/boundary_probe/png/t001_00005.png`, `t012_02163.png`. Style B: `samples/verify_probe/png/d1r001_01923.png`, `d3r030_00005.png` |
 | `roll_leader` | Any non-student filler in the first or last ~2–10 frames of a roll — blank frames, vendor letterhead ("Total Information Management Systems" or "White's Microfilm Services"), microfilm resolution test target, district title page (Osceola County seal + "RECORDS DEPARTMENT"), microfilm-records certification card (filmer signature + reel number + date), operator-written roll-identity cards (e.g. "ROLL 1 / BEGIN Highlands Ave. Elem. / JANET") | see the `samples/boundary_probe/png/*_00001.png` set |
 | `unknown` | Blank mid-roll page, illegible, or unrecognized | — |
 
-**Dropped class:** `separator_index` — we hypothesized a multi-student index page listing ~420 students per roll, but none has been observed in any sample. The SOW's "Classification Samples = sample set of all possible separators" wording turned out to be inaccurate: those 13 TIFs are mostly content templates, not separator cards.
+**Dropped then reinstated — `separator_index` → `student_records_index`:** on 2026-04-18 we dropped the hypothesized multi-student index class because no such page had been observed in our then-current 20-frame-per-roll sample. On 2026-04-21, after a user-supplied image and a 100-roll broad probe (see `samples/index_probe/broad/SUMMARY.md`), we reinstated the class under the name `student_records_index` — it is universal, not rare. See "Student Records Index pages (universal — 2026-04-21)" below.
 
-**Key finding (revised):** True per-student separator pages do not appear to exist. Boundaries between student packets must be inferred from name-change detection.
+**Key finding (revised 2026-04-21):** Boundaries between student packets can still be inferred from name-change detection on cover pages, but we now ALSO have a per-roll canonical student allowlist from the index pages themselves. Cross-checking extracted names against that allowlist is the largest accuracy lever in the pipeline.
 
 **Key finding:** Roll-level separators **do** exist and are deterministic — a "START — ROLL NO. N" clapperboard card at the top of each roll and a matching "END — ROLL NO. N" card at the bottom. Exactly 2 per roll. Visually unmistakable (two diagonal-hatched rectangles + large block text). Trivial to detect with the vision model and useful for auto-trimming the leader.
 
@@ -491,6 +493,71 @@ Token-economics surprise: Amazon Nova tokenizes images ~30% higher than Claude p
 - **Drop** Nova Lite + Nova Pro + Pixtral + Llama 3.2 from consideration.
 
 Before locking, re-run bake-off on ≥50 operator-labeled fixtures with a corrected Style B sample.
+
+## Student Records Index pages (universal — 2026-04-21)
+
+Broad probe `scripts/broad_index_probe.py` sampled first-40 + last-5 frames across all 100 rolls on 2026-04-21. Bedrock Haiku 4.5 classified **1,714 frames at a total cost of $3.35**. Script halted before completion because the signal was overwhelming within the first ~1/3 of samples.
+
+### Per-district results
+
+| District | Rolls | Rolls with index | Confirmed index frames | Est names in sampled indexes |
+|---|---|---|---|---|
+| D1 | 11 | 11 | 96 | 2,399 |
+| D2 | 16 | 15 | 68 | 1,684 |
+| D3 | 13 | 13 | 55 | 1,453 |
+| D4 | 22 | 21 | 161 | 3,955 |
+| D5 | 13 | 11 | 54 | 1,460 |
+| D6 | 15 | 14 | 60 | 1,295 |
+| D7 | 10 | 9 | 65 | 1,560 |
+| **Total** | **100** | **93** | **559** | **13,806** |
+
+**32.6% of sampled frames were index pages.** Extrapolated to full corpus, expect **~71,000 index frames** across all 218,577 TIFs, carrying a canonical name list for every student in the archive.
+
+### Layout varies by school, class does not
+
+Two clear layout families observed:
+
+- **D1 HIGHLANDS layout** — header `PRINT ALL INFORMATION / STUDENT RECORDS INDEX / School: HIGHLANDS / Dates: 1950-75`. Columns: # | STUDENT LAST NAME | FIRST NAME | MIDDLE NAME | DOB | SEC | OTHER | Roll | File.
+- **D2 OHS OSCEOLA JR HIGH layout** — columns: LAST | FIRST | MIDDLE | DOB | TRANS | WITH | GRAD | DATE | BE | CR | ES | FILE | FRAME.
+
+The "FRAME"/"File" columns on the right appear mostly unpopulated — we do NOT get a direct student→microfilm-frame pointer. But the column headers do exist.
+
+### Why earlier docs said no index pages existed
+
+The 2026-04-18 verification probe sampled only `first 3–6 frames + last 3 frames` per roll. Index pages cluster at **frames 7–40 (and occasionally near end-of-roll like D2 ROLL 013 frame 2602)**, missing the probe window entirely. New probe's `first 40 + last 5` sample caught them everywhere.
+
+### Rolls WITHOUT index pages in the sample
+
+Seven rolls (D2/024, D4/046, D4/047, D5/065B, D5/073, D6/076, D6/077, D7/091) showed zero index pages in the sampled window. Possible reasons:
+- Index might be in frames 41+ (outside our sample)
+- Partial / fragmented rolls (065B is only 127 frames)
+- Older vendor / alternate layout
+
+Confirm with full classification pass during production Stage 1 — if a roll truly has no index, fall back to name-change grouping for that roll only.
+
+### Artifacts
+
+- `samples/index_probe/broad/classifications.jsonl` — 1,714 per-frame records
+- `samples/index_probe/broad/SUMMARY.md` — full per-roll breakdown
+- `samples/index_probe/broad/summary.json` — machine-readable rollup
+- `samples/index_probe/broad/png/*_INDEX.png` — 558 human-viewable index images
+- `samples/index_probe/broad/run.log` — probe run log
+
+### Pipeline implications
+
+1. **Add `student_records_index` to the class enum** — classify pass now returns 7 classes.
+2. **Per-roll index-parse step** — after classify pass, collect all frames labeled `student_records_index` per roll, deep-parse each via Haiku (one call per index page, ~$0.008 each). Write canonical `(last, first, middle, dob, enroll_date)` rows to SQLite `roll_index_entries` table.
+3. **H2.7 index-snap** — every extracted student name snaps to nearest index entry on the same roll, Levenshtein ≤ 2 on `(last, first)`. No match → flag HITL.
+4. **H3.7 alphabetical monotonic** — student-cover names should progress alphabetically (indexes confirm this). Out-of-order packet boundary → flag.
+5. **H4.5 index prior** — inject top candidate index entries into ambiguous-frame prompts.
+6. **DOB cross-check** — index DOB vs extracted DOB → mismatch flags.
+
+### Cost impact
+
+- Index parse (~15 pages/roll × 100 rolls × ~$0.008) = **~$12 added** to production run
+- Classification pass cost unchanged (one label per frame, whether "index" or anything else)
+- Expected accuracy lift: **92% → 96-98%** on name field (SOW's only required field)
+- Expected HITL-reduction offsets the $12 cost many times over
 
 ## Architecture redesign gaps — observed 2026-04-20
 

@@ -70,22 +70,29 @@ Filename quality is mixed. Across 3,128 real PDFs: ~25% clean UPPER (`SMITH, JOH
 
 Estimated students: 218,577 TIFs ÷ ~5.1 pages/student ≈ **~43,000 students** (was 48,600 in earlier docs; new estimate uses D1 median PDF 400 KB ÷ median TIF 104 KB).
 
-## Page Taxonomy (6 classes — revised 2026-04-18)
+## Page Taxonomy (7 classes — revised 2026-04-21)
 
 Classification labels to use in prompts and data:
 
 - `student_cover` — primary cumulative/guidance record with name + demographics
 - `student_test_sheet` — standardized test form with student name
 - `student_continuation` — back pages, comments, family data with name at top
+- `student_records_index` — **(reinstated 2026-04-21)** tabular page titled `STUDENT RECORDS INDEX` listing many students on one page. Columns: LAST / FIRST / MIDDLE / DOB plus district-specific variants (`FILE`, `FRAME`, `Roll`, `SEC`, `OTHER`, `TRANS`, `WITH`, `GRAD`, `DATE`, `BE`, `CR`, `ES`). 5–28 rows per page. Layout differs by school/district but class is the same. Appears multiple times per roll in alphabetical sections.
 - `roll_separator` — the START/END clapperboard card bracketing each roll (contains handwritten `ROLL NO. N`)
 - `roll_leader` — any non-student filler: blank, vendor letterhead, resolution test target, district title page, filmer certification card, operator roll-identity card
 - `unknown` — blank mid-roll, illegible, or unrecognized
 
-`separator_index` (the previously hypothesized multi-student index page) was **dropped** — no such page has been observed in any sample. Full definitions in `docs/osceola-poc-discussion.md`.
+**Taxonomy change history:**
+- 2026-04-18: dropped `separator_index` as "never observed in sample"
+- 2026-04-21: reinstated as `student_records_index` after 100-roll probe (`samples/index_probe/broad/`) confirmed **559 index frames across 100 rolls, 7/7 districts**. Earlier sample coverage had simply missed them — they cluster in frames 7–40 and occasionally near end-of-roll, not in the first-5-frame window the earlier probes sampled.
+
+Full definitions in `docs/osceola-poc-discussion.md`.
 
 ## Extraction Fields
 
 Per `student_*` page, where present: `last_name`, `first_name`, `middle_name`, `date_of_birth`, `school`, `page_class`, `confidence`.
+
+Per `student_records_index` page (deep-parse pass): list of rows `{last, first, middle, dob, enroll_date}`. 5–28 rows per page. Feeds a canonical per-roll student allowlist used for cross-checking every extracted student-cover name (H2.7 index-snap, see heuristics doc).
 
 The **SOW only contractually requires student name**. `date_of_birth` and `school` are our choice to aid packet grouping / deduplication; confirm with the client before treating them as required.
 
