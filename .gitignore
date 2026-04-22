@@ -13,6 +13,9 @@ venv/
 
 # POC artifacts
 poc/output/
+samples/*/png/
+samples/verify_probe/*.tif
+samples/boundary_probe/*.tif
 
 # Local data — FERPA: do NOT commit real student records
 samples/**
