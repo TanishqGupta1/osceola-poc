@@ -1,4 +1,5 @@
-from poc.schemas import PageResult, StudentPacket
+from poc.index import snap_to_index
+from poc.schemas import IndexRow, PageResult, StudentPacket
 
 
 def _normalize(p: PageResult) -> str:
@@ -9,11 +10,17 @@ def _has_name(p: PageResult) -> bool:
     return bool(p.student.last.strip() or p.student.first.strip())
 
 
+_STUDENT_CLASSES = {"student_cover", "student_test_sheet", "student_continuation"}
+
+
 def group_pages(
     pages: list[PageResult],
+    roll_index: list[IndexRow],
     confidence_threshold: float = 0.7,
 ) -> list[StudentPacket]:
     pages = sorted(pages, key=lambda p: p.frame)
+    if not pages:
+        return []
 
     start_idx = 0
     end_idx = len(pages)
@@ -39,19 +46,22 @@ def group_pages(
             return
         avg = sum(cur_confs) / len(cur_confs)
         pid = f"{pages[0].roll_id.lower().replace(' ', '')}_{len(packets)+1:03d}"
-        packets.append(StudentPacket(
+        raw_pkt = StudentPacket(
             packet_id=pid,
+            last_raw=cur_last, first_raw=cur_first, middle_raw=cur_middle,
             last=cur_last, first=cur_first, middle=cur_middle,
             frames=list(cur_frames),
             flagged=any(c < confidence_threshold for c in cur_confs),
             avg_confidence=avg,
-        ))
-        cur_frames = []; cur_confs = []
+        )
+        packets.append(snap_to_index(raw_pkt, roll_index))
+        cur_frames = []
+        cur_confs = []
         cur_last = cur_first = cur_middle = ""
         cur_key = None
 
     for p in window:
-        if p.page_class not in {"student_cover", "student_test_sheet", "student_continuation"}:
+        if p.page_class not in _STUDENT_CLASSES:
             continue
         if not _has_name(p):
             if cur_frames:
