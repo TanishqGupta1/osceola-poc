@@ -1,21 +1,26 @@
-SYSTEM_PROMPT = """You classify and extract data from scanned microfilm pages of Osceola County School District student records (circa 1991-92). Each page belongs to one of six classes:
+MAX_OUTPUT_TOKENS = 1500
+
+SYSTEM_PROMPT = """You classify and extract data from scanned microfilm pages of Osceola County School District student records (circa 1991-92). Each page belongs to one of seven classes:
 
 1. `student_cover` — primary cumulative/guidance record, typically has student name top-left, demographics, school, DOB. Florida Cumulative Guidance Record 1-12, Osceola Progress Report, Elementary Record.
 2. `student_test_sheet` — standardized test form with student name printed or typed. Stanford Achievement Test, H&R First Reader, SAT Profile Graph.
 3. `student_continuation` — back pages, comments, family data, health records — student name at top. Comments page, MCH 304 health record, Elementary family data page.
-4. `roll_separator` — START or END card that bookends each roll. TWO visually distinct styles both count as `roll_separator`:
+4. `student_records_index` — tabular page titled "STUDENT RECORDS INDEX" listing many students on one page. Columns: LAST / FIRST / MIDDLE / DOB and district-specific variants (FILE, FRAME, Roll, SEC, OTHER, TRANS, WITH, GRAD, DATE, BE, CR, ES). 5-28 rows per page. Layout differs by school/district but class is the same. Appears multiple times per roll in alphabetical sections.
+5. `roll_separator` — START or END card that bookends each roll. TWO visually distinct styles both count as `roll_separator`:
      - Style A (clapperboard): diagonal-hatched rectangles + "START" or "END" in large block text + boxed handwritten "ROLL NO. N"
      - Style B (certificate): printed "CERTIFICATE OF RECORD" / "CERTIFICATE OF AUTHENTICITY" form with START or END heading, typed school name, handwritten date, filmer signature, reel number
-5. `roll_leader` — non-student filler frames: blank page, vendor letterhead ("Total Information Management Systems" or "White's Microfilm Services"), microfilm resolution test target, district title page (Osceola County seal + "RECORDS DEPARTMENT"), filmer certification card without START/END marker, operator roll-identity card.
-6. `unknown` — blank mid-roll, illegible, or unrecognized.
+6. `roll_leader` — non-student filler frames: blank page, vendor letterhead ("Total Information Management Systems" or "White's Microfilm Services"), microfilm resolution test target, district title page (Osceola County seal + "RECORDS DEPARTMENT"), filmer certification card without START/END marker, operator roll-identity card.
+7. `unknown` — blank mid-roll, illegible, or unrecognized.
 
 Images may be rotated 90°, 180°, or 270°; read orientation regardless. Images may be noisy, low-contrast, or partially missing — when in doubt use `unknown` with low confidence rather than guessing.
 
-Extract student name from the TOP-LEFT of the form (per SOW). Only extract student fields when `page_class` is `student_*`. Leave them blank otherwise.
+Extract student name from the TOP-LEFT of the form (per SOW). Only extract student fields when `page_class` is `student_cover`, `student_test_sheet`, or `student_continuation`. Leave them blank otherwise.
 
 Extract separator fields (`marker`, `roll_no`) only when `page_class` is `roll_separator`.
 
 Extract roll metadata (`filmer`, `date`, `school`, `reel_no_cert`) only from certification or operator leader cards — these appear once per roll near the start.
+
+When `page_class` is `student_records_index`, populate the `index_rows` array with every visible row in the table. Each row is one object: `{last, first, middle, dob}`. Skip fully blank rows. If a district's layout lacks the DOB column, leave `dob` as an empty string. For every other value of `page_class`, `index_rows` MUST be an empty array.
 
 Self-report `confidence_overall` and `confidence_name` on a 0.0-1.0 scale based on legibility and certainty. Be honest — low confidence flags work for human review."""
 
@@ -28,13 +33,14 @@ TOOL_SCHEMA = {
         "type": "object",
         "required": [
             "page_class", "separator", "student", "roll_meta",
-            "confidence_overall", "confidence_name",
+            "confidence_overall", "confidence_name", "index_rows",
         ],
         "properties": {
             "page_class": {
                 "type": "string",
                 "enum": [
                     "student_cover", "student_test_sheet", "student_continuation",
+                    "student_records_index",
                     "roll_separator", "roll_leader", "unknown",
                 ],
             },
@@ -62,6 +68,20 @@ TOOL_SCHEMA = {
                     "date": {"type": "string"},
                     "school": {"type": "string"},
                     "reel_no_cert": {"type": "string"},
+                },
+            },
+            "index_rows": {
+                "type": "array",
+                "description": "Rows from a STUDENT RECORDS INDEX page. Empty array when page_class is not student_records_index.",
+                "items": {
+                    "type": "object",
+                    "required": ["last", "first"],
+                    "properties": {
+                        "last": {"type": "string"},
+                        "first": {"type": "string"},
+                        "middle": {"type": "string"},
+                        "dob": {"type": "string"},
+                    },
                 },
             },
             "confidence_overall": {"type": "number", "minimum": 0, "maximum": 1},

@@ -2,27 +2,36 @@ import os
 import time
 from typing import Any
 
-import boto3
 from botocore.exceptions import ClientError
 
-from poc.prompts import SYSTEM_PROMPT, TOOL_SCHEMA, USER_TURN_TEXT
+from poc import env
+from poc.prompts import MAX_OUTPUT_TOKENS, SYSTEM_PROMPT, TOOL_SCHEMA, USER_TURN_TEXT
 
 DEFAULT_MODEL_ID = os.environ.get(
     "BEDROCK_MODEL_ID",
     "us.anthropic.claude-haiku-4-5-20251001-v1:0",
 )
-DEFAULT_REGION = os.environ.get("AWS_REGION", "us-west-2")
+
+# Haiku 4.5 pricing as of 2026-04: $1.00 / MTok input, $5.00 / MTok output.
+HAIKU_IN_USD_PER_MTOK = 1.00
+HAIKU_OUT_USD_PER_MTOK = 5.00
+
+
+def compute_usd_cost(tokens_in: int, tokens_out: int) -> float:
+    return (tokens_in / 1e6 * HAIKU_IN_USD_PER_MTOK) + (tokens_out / 1e6 * HAIKU_OUT_USD_PER_MTOK)
 
 
 def classify_via_bedrock(
     png_bytes: bytes,
     model_id: str = DEFAULT_MODEL_ID,
-    region: str = DEFAULT_REGION,
     max_retries: int = 4,
     retry_base_delay: float = 1.0,
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """Call Bedrock Converse with image + enforced tool schema. Returns (tool_input, usage)."""
-    client = boto3.client("bedrock-runtime", region_name=region)
+) -> tuple[dict[str, Any], dict[str, int], float]:
+    """Call Bedrock Converse with image + enforced tool schema.
+
+    Returns (tool_input, usage, usd_cost).
+    """
+    client = env.bedrock_client()
 
     messages = [
         {
@@ -44,19 +53,23 @@ def classify_via_bedrock(
 
     delay = retry_base_delay
     last_err: Exception | None = None
-    for attempt in range(max_retries):
+    for _attempt in range(max_retries):
         try:
             resp = client.converse(
                 modelId=model_id,
                 messages=messages,
                 system=[{"text": SYSTEM_PROMPT}],
                 toolConfig=tool_config,
-                inferenceConfig={"maxTokens": 1000, "temperature": 0.0},
+                inferenceConfig={"maxTokens": MAX_OUTPUT_TOKENS, "temperature": 0.0},
             )
             content = resp["output"]["message"]["content"]
+            usage = resp.get("usage", {}) or {}
+            tokens_in = int(usage.get("inputTokens") or 0)
+            tokens_out = int(usage.get("outputTokens") or 0)
+            usd_cost = compute_usd_cost(tokens_in, tokens_out)
             for block in content:
                 if "toolUse" in block:
-                    return block["toolUse"]["input"], resp.get("usage", {})
+                    return block["toolUse"]["input"], usage, usd_cost
             raise RuntimeError(f"no toolUse block: {content!r}")
         except ClientError as e:
             code = e.response.get("Error", {}).get("Code", "")
