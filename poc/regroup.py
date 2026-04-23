@@ -29,6 +29,12 @@ def main() -> int:
                     help="Disable H2.4 adjacent-packet merge for comparison runs.")
     ap.add_argument("--mode", choices=["boundary", "index"], default="boundary",
                     help="boundary = name-change grouping; index = cluster by snap target.")
+    ap.add_argument("--fallback", type=int, default=0,
+                    help="index-mode only: also append name-change packets from "
+                         "unsnapped pages, minimum size = this many pages. 0 disables.")
+    ap.add_argument("--min-bucket-size", type=int, default=1,
+                    help="index-mode only: drop buckets (index hits) with fewer than "
+                         "this many pages — filters out single-page mis-snaps.")
     ap.add_argument("--confidence-threshold", type=float, default=0.7)
     args = ap.parse_args()
 
@@ -53,6 +59,8 @@ def main() -> int:
             pages,
             roll_index=roll_index,
             confidence_threshold=args.confidence_threshold,
+            fallback_min_packet_size=args.fallback,
+            min_bucket_size=args.min_bucket_size,
         )
     else:
         packets = group_pages(

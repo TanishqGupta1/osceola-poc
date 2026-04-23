@@ -160,12 +160,14 @@ def group_by_index_entry(
     pages: list[PageResult],
     roll_index: list[IndexRow],
     confidence_threshold: float = 0.7,
+    fallback_min_packet_size: int = 0,
+    min_bucket_size: int = 1,
 ) -> list[StudentPacket]:
     """Alternate grouping: cluster all pages that snap to the same index row.
 
-    One packet per unique index entry hit. Pages that don't snap are dropped
-    (become zero-packet orphans). Useful when per-page names are noisy enough
-    that name-change boundaries fire constantly.
+    One packet per unique index entry hit whose bucket has >= min_bucket_size
+    pages (size-1 buckets are typically noise from isolated mis-snaps).
+    Pages that don't snap are dropped unless `fallback_min_packet_size > 0`.
     """
     if not roll_index:
         return []
@@ -187,13 +189,18 @@ def group_by_index_entry(
     # Key by (last, first) only — middle name can vary by page, pick majority later.
     buckets: dict[tuple[str, str], list[tuple[PageResult, str]]] = {}
     confs: dict[tuple[str, str], list[float]] = {}
+    unsnapped: list[PageResult] = []
     for p in window:
         if p.page_class not in _STUDENT_CLASSES:
             continue
         if not _has_name(p):
+            if fallback_min_packet_size:
+                unsnapped.append(p)
             continue
         sl, sf, sm, d = _snap_page_name(p.student.last, p.student.first, roll_index)
-        if d is None:  # no snap match within threshold — drop the page
+        if d is None:
+            if fallback_min_packet_size:
+                unsnapped.append(p)
             continue
         key = (sl, sf)
         buckets.setdefault(key, []).append((p, sm))
@@ -209,6 +216,8 @@ def group_by_index_entry(
     for i, key in enumerate(sorted_keys):
         last, first = key
         entries = buckets[key]
+        if len(entries) < min_bucket_size:
+            continue
         mids = [m for _, m in entries if m]
         middle = Counter(mids).most_common(1)[0][0] if mids else ""
         ps = [p for p, _ in entries]
@@ -224,6 +233,52 @@ def group_by_index_entry(
             index_snap_applied=True,
             index_snap_distance=0,
         ))
+
+    # Fallback: name-change-group the unsnapped subset, keep clusters >= threshold.
+    if fallback_min_packet_size and unsnapped:
+        cur: list[PageResult] = []
+        cur_confs_f: list[float] = []
+        cur_key: str | None = None
+        fallback_packets: list[StudentPacket] = []
+
+        def flush_fb():
+            nonlocal cur, cur_confs_f, cur_key
+            if len(cur) >= fallback_min_packet_size:
+                last, first, middle = _majority_name(cur)
+                if last or first:
+                    avg_f = sum(cur_confs_f) / len(cur_confs_f)
+                    fallback_packets.append(StudentPacket(
+                        packet_id="pending",
+                        last_raw=last, first_raw=first, middle_raw=middle,
+                        last=last, first=first, middle=middle,
+                        frames=[p.frame for p in cur],
+                        flagged=any(c < confidence_threshold for c in cur_confs_f),
+                        avg_confidence=avg_f,
+                    ))
+            cur = []
+            cur_confs_f = []
+            cur_key = None
+
+        for p in sorted(unsnapped, key=lambda x: x.frame):
+            if not _has_name(p):
+                if cur:
+                    cur.append(p)
+                    cur_confs_f.append(p.confidence_name)
+                continue
+            k = _normalize(p)
+            if k != cur_key:
+                flush_fb()
+                cur_key = k
+            cur.append(p)
+            cur_confs_f.append(p.confidence_name)
+        flush_fb()
+
+        base = len(packets)
+        for j, fp in enumerate(fallback_packets):
+            packets.append(fp.model_copy(update={
+                "packet_id": f"{roll_slug}_{base + j + 1:03d}",
+            }))
+
     return packets
 
 

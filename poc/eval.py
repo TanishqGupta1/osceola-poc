@@ -47,8 +47,11 @@ def _match_pass(
             for i, gt in enumerate(gt_usable):
                 if i in gt_used:
                     continue
-                if (Levenshtein.distance(gt["last"], pkt_last) <= max_levenshtein
-                        and Levenshtein.distance(gt["first"], pkt_first) <= max_levenshtein):
+                # Scale Lev cap with name length: long names tolerate more edits.
+                cap_last = max_levenshtein + (1 if len(gt["last"]) >= 7 else 0)
+                cap_first = max_levenshtein + (1 if len(gt["first"]) >= 7 else 0)
+                if (Levenshtein.distance(gt["last"], pkt_last) <= cap_last
+                        and Levenshtein.distance(gt["first"], pkt_first) <= cap_first):
                     best_idx = i
                     best_level = "partial"
                     break
@@ -72,7 +75,7 @@ def evaluate(
     packets: list[StudentPacket],
     ground_truth_filenames: Iterable[str],
     roll_id: str,
-    max_levenshtein: int = 2,
+    max_levenshtein: int = 3,
     index_frames_total: int = 0,
     index_rows_total: int = 0,
 ) -> EvalReport:
