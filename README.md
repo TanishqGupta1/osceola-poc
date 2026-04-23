@@ -1,58 +1,132 @@
 # Osceola POC — Student Records AI Pipeline
 
-AI pipeline to classify and extract data from **218,577 TIF scans** (verified via full S3 inventory, matches SOW exactly) of student records on S3, producing named PDFs per student (`Last, First Name MI.pdf`) grouped into their original microfilm roll folders.
+AI pipeline to classify and extract data from **218,577 TIF scans** of student records on S3, producing named PDFs per student (`Last, First Name MI.pdf`) grouped into their original microfilm roll folders.
 
 Client: Osceola County School District.
 Source: `s3://servflow-image-one/Osceola Co School District/` (us-west-2).
-Model: TBD pending bake-off — candidates include Amazon Nova Lite, Nova Pro, Claude Haiku 4.5. Bedrock vision only — no Textract.
+Model: **Claude Haiku 4.5 on AWS Bedrock** via inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Bedrock vision only — no Textract.
 
-**Data notes (updated 2026-04-21):**
+**Phase 1 POC status (2026-04-23): COMPLETE.** Pipeline shipped end-to-end. Full ROLL 001 run (1924 TIFs, $9.89) measured. Go/no-go gate met at high-precision operating point. Details in `docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md`.
+
+**Data notes:**
 - 100 rolls across 7 districts. Gaps: ROLL 048, 100. Splits: 065B, 075A. Partials: 059, 101.
-- Ground truth exists for **D1 only** (7 rolls, 3,128 real PDFs). Districts 2–7 have zero ground truth.
-- `Test Input/` is byte-identical to `Input/ROLL 001|012|076/` — not a held-out test set. `Test Output/` is empty.
-- ~14% of ground-truth filenames have placeholder tokens or embedded OCR garbage — eval must apply a cleaning pass first.
-- **`STUDENT RECORDS INDEX` pages are universal** (2026-04-21): a 100-roll broad probe (`samples/index_probe/broad/SUMMARY.md`) found 559 confirmed index frames across **93/100 rolls in all 7 districts**. Each lists 5–28 students with DOB in alphabetical sections. This gives us a canonical per-roll student allowlist — the biggest accuracy lever in the pipeline.
+- Ground truth exists for **D1 only** (7 rolls, 3,128 real PDFs). Districts 2–7 have zero GT.
+- `Test Input/` is byte-identical to `Input/ROLL 001|012|076/` — not a held-out test set.
+- ~14% of GT filenames contain placeholders / OCR garbage. `poc/gt_clean.py` strips them with a drop-reason taxonomy before eval.
+- **`STUDENT RECORDS INDEX` pages are universal:** 100-roll broad probe found 559 index frames across 93/100 rolls in 7/7 districts. Index-snap (H2.7) against these is the single highest-ROI heuristic — **3.2× accuracy lift** on ROLL 001.
 
 ---
 
 ## Problem
 
-~218K TIF images, one per scanned microfilm frame, across 7 districts × 101 rolls (≈2,000 frames per roll). Each roll is a linear scan of a physical 1991–92 microfilm reel. Student packets are back-to-back with no per-student separator pages — boundaries must be inferred from name changes. Two different filming vendors used different leader + separator-card layouts.
+~218K TIF images, one per scanned microfilm frame, across 7 districts × 101 rolls (≈2,000 frames per roll). Each roll is a linear scan of a physical 1991–92 microfilm reel. Student packets are back-to-back with no per-student separator pages. Two different filming vendors used different leader + separator-card layouts. Extracted names are noisy (52% of consecutive student pages disagree on name; 42% extract empty name).
 
-Output target: **~43,000 student PDFs** (revised 2026-04-20 from D1 PDF/TIF size ratio at ~5.1 pages/student; earlier 48,600 figure was based on a 4.5-pages estimate), named `Last, First MI.pdf`, one per student, with 90–95% name-extraction accuracy and a human-in-the-loop queue for low-confidence cases.
+Output target: **~43,000 student PDFs**, named `Last, First MI.pdf`, one per student, with 90–95% name-extraction accuracy, HITL queue for low-confidence cases.
 
 ---
 
 ## Canonical roll structure
 
 ```
-Frame 00001 … 0000N     roll_leader — variable length (3–7 frames)
-  00001                 blank / vendor letterhead / microfilm resolution target
-  00002…0000(N-1)       operator card, certification card, district title page
-  0000N                 roll_separator (START clapperboard OR certificate card)
+Frame 00001 … 0000N     roll_leader — 3–7 frames
+  blank / vendor letterhead / microfilm resolution target / district title /
+  certification card / operator card
 
-Frame 0000N+1 … M-1     student packets, back-to-back
-                         grouped by name-change detection
+Frame 0000N+1           roll_separator (START — Style A clapperboard OR Style B certificate)
 
-Frame M                 roll_separator (END clapperboard OR certificate card)
-Frame M+1 … last        roll_leader — trailing blank / letterhead
+Frame N+1 … M-1         student packets, back-to-back
+                         + student_records_index pages interspersed (typically frames 7–40)
+
+Frame M                 roll_separator (END)
+Frame M+1 … last        roll_leader — trailing
 ```
 
-Two visually distinct separator-card styles — both classify as `roll_separator`:
+Two separator styles — both classify as `roll_separator`:
 
 | Style | Look | Districts |
 |---|---|---|
 | A — clapperboard | diagonal-hatched rectangles + "START/END" + boxed handwritten `ROLL NO. N` | 2, 4, 5, 6, 7 |
-| B — certificate | printed "CERTIFICATE OF RECORD" form + START/END heading + filmer signature | 1, 3 |
+| B — certificate | printed `CERTIFICATE OF RECORD` / `CERTIFICATE OF AUTHENTICITY` form + START/END heading + filmer signature | 1, 3 |
 
-## Page taxonomy (6 classes)
+## Page taxonomy (7 classes)
 
-- `student_cover` — primary cumulative/guidance record (name + demographics)
-- `student_test_sheet` — standardized test form with student name
-- `student_continuation` — back page, comments, family data with name at top
-- `roll_separator` — START or END card (either style)
-- `roll_leader` — blank, vendor letterhead, calibration target, district title, certification card, operator card
-- `unknown` — blank mid-roll, illegible
+- `student_cover` — primary cumulative / guidance record (name + demographics).
+- `student_test_sheet` — standardized test form with student name.
+- `student_continuation` — back page, comments, family data with name at top.
+- `student_records_index` — tabular `STUDENT RECORDS INDEX` page listing 5–28 students each. Feeds the per-roll canonical allowlist used for index-snap.
+- `roll_separator` — START / END card (either style).
+- `roll_leader` — blank, vendor letterhead, calibration target, district title, certification card, operator card.
+- `unknown` — blank mid-roll, illegible.
+
+Full 32-subtype breakdown: [`docs/class-matrix.md`](docs/class-matrix.md) + [`docs/class-matrix.json`](docs/class-matrix.json). Per-class identification heuristics: [`docs/class-heuristics.md`](docs/class-heuristics.md).
+
+---
+
+## Phase 1 POC architecture (shipped)
+
+Local Python, no AWS infra. Dual-env (`.env` S3 + `.env.bedrock` Bedrock).
+
+```mermaid
+flowchart LR
+    S3[("S3 Input")] --> DL["pull 1924 TIFs"]
+    DL --> CONV["poc/convert.py<br/>TIF → PNG bytes"]
+    CONV --> CE["poc/classify_extract.py<br/>Bedrock Converse"]
+    CE --> BR[("Claude Haiku 4.5<br/>tool_use schema")]
+    BR --> PAGES[("pages.jsonl<br/>1924 PageResults")]
+    PAGES --> IDX["poc/index.py<br/>build_roll_index"]
+    IDX --> INDEX[("index.json<br/>445 rows")]
+    PAGES --> GROUP["poc/group.py<br/>group_by_index_entry<br/>+ H2.7 snap_to_index"]
+    INDEX --> GROUP
+    GROUP --> STUDENTS[("students.json<br/>N packets")]
+    STUDENTS --> EVAL["poc/eval.py<br/>two-pass matcher<br/>pre/post snap"]
+    GTC["poc/gt_clean.py<br/>drop placeholders"] --> EVAL
+    EVAL --> REPORT[("eval.json<br/>acc_partial_pre/post")]
+    PAGES -.-> SPEND[("spend.jsonl<br/>per-Bedrock-call cost")]
+```
+
+**Measured on ROLL 001 (1924 TIFs):**
+
+| Operating point | Packets | `acc_partial` | Recall |
+|---|---|---|---|
+| `min_bucket=3` (high-precision, gate) | 93 | **87.1%** ✅ | 23.3% |
+| `min_bucket=2` (balanced) | 203 | 82.8% | 48.4% |
+| `min_bucket=1` (high-recall, default) | 323 | 75.9% | 70.6% |
+
+Full results: [`docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md`](docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md).
+Session report with every change: [`docs/2026-04-23-session-report.md`](docs/2026-04-23-session-report.md).
+
+**Cost:** $9.89 for full ROLL 001 classify pass. All re-evaluations run against the frozen `pages.jsonl` with zero Bedrock $.
+
+---
+
+## Quick start
+
+```bash
+# Install deps
+pip install -r requirements.txt
+
+# Configure AWS (two separate creds for POC)
+cp .env.example .env
+# Edit .env with S3 creds (Servflow-image1 user, us-west-2)
+# Separately create .env.bedrock with Bedrock creds (tanishq user, account 690816807846)
+
+# Unit tests (59 passing)
+pytest -q
+
+# Real-Bedrock smoke (6 fixtures, ~$0.02, ~45s)
+BEDROCK_SMOKE_TEST=1 pytest tests/test_smoke_bedrock.py -v -s
+
+# Full POC run on ROLL 001 (~20 min, up to $10)
+python3 -m poc.run_poc --roll-id "ROLL 001" \
+    --input samples/test_input_roll001_full \
+    --ground-truth samples/output_pdfs_district1_roll001_full \
+    --concurrency 10 --budget-ceiling 10.0
+
+# Re-eval from existing pages.jsonl with zero Bedrock $
+python3 -m poc.regroup --roll-id "ROLL 001" \
+    --ground-truth samples/output_pdfs_district1_roll001_full \
+    --mode index --min-bucket-size 3
+```
 
 ---
 
@@ -62,7 +136,7 @@ Two visually distinct separator-card styles — both classify as `roll_separator
 
 **Editable source:**
 - HTML (canonical): [`diagrams/phase2_arch.html`](diagrams/phase2_arch.html)
-- Figma (interactive): https://www.figma.com/design/mCTwHS2SO9073tSu1NI3yv
+- Figma: https://www.figma.com/design/mCTwHS2SO9073tSu1NI3yv
 
 <details>
 <summary>Mermaid fallback (collapsed)</summary>
@@ -87,140 +161,100 @@ flowchart LR
 
 Five stacked layers — compound effect:
 
-1. **Self-reported confidence** per page + per field from Haiku 4.5
-2. **Cross-page validation** — majority-vote name across consecutive pages in same packet
-3. **Format validation** — DOB regex, name alpha-only, `ROLL NO.` matches folder context
-4. **Sonnet 4.6 fallback tier** — mid-confidence retries only (~10–15% of pages)
-5. **HITL review** — residual <5% sent to human operators
+1. **Tier 0 pixel heuristics** — blank detector, pHash against vendor letterheads / calibration target, frame-position prior. Deterministic, $0 at inference.
+2. **Self-reported confidence** per page + per field from Haiku 4.5.
+3. **Index-snap (H2.7)** — every packet name snaps to the canonical per-roll index allowlist. **Primary lever, validated 2026-04-23.**
+4. **Sonnet 4.6 fallback tier** — mid-confidence retries (0.60–0.85), ~10–15% of pages.
+5. **HITL review** — residual <5% sent to human operators.
 
 ### Cost estimate (one-time 218K run)
 
 | Line item | Cost |
 |---|---|
-| Bedrock Haiku (Batch Inference) | ~$225 |
+| Bedrock Haiku (Batch Inference) | ~$560 |
 | Bedrock Sonnet (retry tier) | ~$150 |
 | Lambda invocations | ~$50 |
 | Step Functions | ~$20 |
 | DynamoDB on-demand | ~$10 |
 | S3 + transfer | ~$30 |
-| **AWS total** | **~$490** |
+| **AWS total** | **~$820** |
 
-Plus operator HITL time (~90 hrs estimated at 5% review rate × 30s per page).
-
----
-
-## Phase 1 POC architecture (current scope)
-
-Local Python, no AWS infra. Prove accuracy before building production stack.
-
-```mermaid
-flowchart LR
-    S3["`**S3**
-    Test Input/ROLL 001/
-    1924 TIFs`"]
-
-    L["`samples/ (local)`"]
-
-    CONV["`**poc/convert.py**
-    Pillow TIF → PNG bytes
-    (in-memory)`"]
-
-    BR["`**Bedrock Converse**
-    Claude Haiku 4.5
-    tool_use schema`"]
-
-    CE["`**poc/classify_extract.py**
-    per-page orchestrator`"]
-
-    PAGES["`**poc/output/
-    roll_001_pages.jsonl**
-    per-page JSON`"]
-
-    GROUP["`**poc/group.py**
-    name-change grouping
-    [START+1 … END-1]`"]
-
-    STUDENTS["`**poc/output/
-    roll_001_students.json**`"]
-
-    EVAL["`**poc/eval.py**
-    vs ground-truth
-    Output PDF filenames`"]
-
-    REPORT["`**poc/output/
-    roll_001_eval.json**
-    accuracy report`"]
-
-    S3 --> L --> CONV --> CE --> BR
-    BR --> CE --> PAGES --> GROUP --> STUDENTS --> EVAL --> REPORT
-```
-
-Success criterion: `accuracy_partial ≥ 0.85` on ROLL 001.
+Derived from Phase 1 measured spend ($9.89 / 1924 TIFs) scaled to 218K, minus batch-discount and retry-tier estimates. Plus operator HITL time (~90 hrs at 5% review rate × 30s / page).
 
 ---
 
 ## Repo layout
 
 ```
-├── main.py                     # interactive S3 helper CLI (current)
-├── s3_operations.py            # boto3 wrappers for S3 list/upload/download/read/delete
-├── requirements.txt            # boto3, pillow, pydantic, pytest, Levenshtein
-├── CLAUDE.md                   # guidance for AI coding assistants
-├── README.md                   # you are here
-├── .env.example                # AWS creds template
+├── main.py                       # interactive S3 helper CLI (legacy)
+├── s3_operations.py              # boto3 wrappers (pagination caveat)
+├── poc/                          # Phase 1 POC v2 (shipped)
+│   ├── env.py
+│   ├── schemas.py
+│   ├── convert.py
+│   ├── prompts.py
+│   ├── bedrock_client.py
+│   ├── classify_extract.py
+│   ├── index.py
+│   ├── gt_clean.py
+│   ├── group.py
+│   ├── eval.py
+│   ├── run_poc.py
+│   ├── regroup.py
+│   └── output/                   # artifacts (gitignored)
+├── scripts/
+│   └── broad_index_probe.py      # 100-roll index-page scanner
+├── tests/                        # 59 unit tests, 6 smoke-gated
 ├── docs/
-│   ├── osceola-poc-discussion.md         # project discovery notes (source of truth)
+│   ├── osceola-poc-discussion.md        # source-of-truth brief
+│   ├── heuristics-brainstorm.md         # Tier 0-5 catalogue
+│   ├── class-heuristics.md              # per-class decision rules
+│   ├── class-matrix.md                  # 32 subtypes × 13 features
+│   ├── class-matrix.json                # machine-readable subtype library
+│   ├── 2026-04-23-session-report.md     # full POC v2 session dump
 │   └── superpowers/
-│       ├── specs/2026-04-18-osceola-phase1-poc-design.md   # Phase 1 design spec
-│       └── plans/2026-04-18-osceola-phase1-poc.md          # 12-task TDD plan
-├── samples/
-│   └── fixtures_public/        # 3 non-PII fixtures (separator cards + calibration target)
-│                               # Full sample set stays in S3 (FERPA-protected).
-└── poc/                        # (to be created per plan) — classify + extract + group + eval
+│       ├── specs/                       # design specs + results docs
+│       └── plans/                       # TDD implementation plans
+├── samples/                       # FERPA — gitignored except fixtures_public/
+├── requirements.txt
+├── CLAUDE.md                      # agent guidance
+└── README.md                      # you are here
 ```
-
----
-
-## Quick start
-
-```bash
-# install deps
-pip install -r requirements.txt
-
-# configure AWS
-cp .env.example .env
-# edit .env with AWS creds + set S3_BUCKET_NAME=servflow-image-one, AWS_REGION=us-west-2
-
-# run the S3 helper CLI
-python main.py
-```
-
-POC pipeline scripts not yet written — see [`docs/superpowers/plans/2026-04-18-osceola-phase1-poc.md`](docs/superpowers/plans/2026-04-18-osceola-phase1-poc.md) for the 12-task TDD build order.
 
 ---
 
 ## Roadmap
 
-| Phase | Scope | Duration |
+| Phase | Scope | Status |
 |---|---|---|
-| **1 — POC** (current) | Python pipeline on ROLL 001, measure accuracy | 2 weeks |
-| **2 — Single-roll prod** | Step Functions + Lambda + DynamoDB for one roll end-to-end + PDF output | 2 weeks |
-| **3 — HITL UI** | React SPA + Cognito + API Gateway for operator review | 2 weeks |
-| **4 — Bulk 218K** | Bedrock Batch Inference, monitoring, security hardening, full dataset run | 2 weeks |
+| **1 — POC** | Python pipeline on ROLL 001, measure accuracy | **DONE** (2026-04-23) |
+| **2 — Single-roll prod** | Step Functions + Lambda + DynamoDB + PDF output + Sonnet retry + Tier 0/1 heuristics | next |
+| **3 — HITL UI** | React SPA + Cognito + API Gateway for operator review | planned |
+| **4 — Bulk 218K** | Bedrock Batch Inference, monitoring, security hardening, full dataset run | planned |
 
 ---
 
 ## Data source
 
-FERPA-protected student records. Real TIFs are NOT in this repo — they live in S3 (`servflow-image-one`, us-west-2) with IAM-gated access. The three images in `samples/fixtures_public/` are separator cards and a calibration target that contain no student PII.
+FERPA-protected student records. Real TIFs and GT PDFs are NOT in this repo — they live in S3 with IAM-gated access. Locally-cached `samples/*` dirs are gitignored. The three images in `samples/fixtures_public/` are separator cards and a calibration target with no student PII.
 
-Known data caveat: the S3 folder number (e.g. `ROLL 101`) does not always match the original microfilm reel number on the certification card (`Reel 756` in one observed case). Use the certification card's reel number when referencing the original archive.
+**Reel-number caveat:** S3 folder number (e.g. `ROLL 101`) does not always match the original microfilm reel number on the certification card (`Reel 756` observed). Use certification-card reel number when referencing physical archives.
 
 ---
 
-## Known blockers
+## Resolved blockers
 
-1. **IAM Bedrock permissions missing** — the current `Servflow-image1` IAM user cannot call `bedrock:*` APIs. Must be resolved before Phase 1 Task 5. Grant policy or issue a new role.
+- ~~IAM Bedrock permissions missing on `Servflow-image1`~~ — resolved via dual-env (`.env` S3 + `.env.bedrock` Bedrock). `Servflow-image1` still has S3 only; `tanishq` in account `690816807846` has full Bedrock in us-west-2. `poc/env.py` wires both cleanly.
+
+---
+
+## Known limitations (Phase 2 targets)
+
+- `s3_operations.list_objects` without pagination — caps at 1,000 keys. Use `poc.env.s3_client() + paginator` for anything over 1K.
+- Over-classification of `student_cover` (586 on ROLL 001 vs ~347 actual students). Prompt v2 should tighten cover definition.
+- Field-inversion in Haiku name extraction (last/first columns sometimes swapped). Partially mitigated by swap-tolerant snap; prompt v2 should fix at extraction.
+- `roll_001_spend.jsonl` buffering — sometimes empty (same data in `pages.jsonl`). Trivial fix pending.
+- No Tier 0 pixel heuristics, Tier 1 format validators, or Sonnet retry tier yet. All specced; Phase 2 work.
 
 ---
 
