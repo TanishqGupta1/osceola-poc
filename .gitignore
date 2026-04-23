@@ -32,6 +32,9 @@ downloads/
 # Large binary docs (SOW, scans)
 *.docx
 
+# Worktrees
+.worktrees/
+
 # IDE
 .vscode/
 .idea/
