@@ -1,0 +1,38 @@
+[
+  {
+    "label": "cover_d2r020",
+    "rel_path": "index_probe/broad/d2r020/00037.tif",
+    "expected_class": "student_cover",
+    "district": 2
+  },
+  {
+    "label": "cover_d3r032",
+    "rel_path": "index_probe/broad/d3r032/00005.tif",
+    "expected_class": "student_cover",
+    "district": 3
+  },
+  {
+    "label": "cover_d4r047",
+    "rel_path": "index_probe/broad/d4r047/00005.tif",
+    "expected_class": "student_cover",
+    "district": 4
+  },
+  {
+    "label": "cover_d5r070",
+    "rel_path": "index_probe/broad/d5r070/00005.tif",
+    "expected_class": "student_cover",
+    "district": 5
+  },
+  {
+    "label": "cover_d6r079",
+    "rel_path": "index_probe/broad/d6r079/00019.tif",
+    "expected_class": "student_cover",
+    "district": 6
+  },
+  {
+    "label": "cover_d7r094",
+    "rel_path": "index_probe/broad/d7r094/00005.tif",
+    "expected_class": "student_cover",
+    "district": 7
+  }
+]

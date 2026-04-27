@@ -1,0 +1,37 @@
+[
+  {
+    "label": "cover_d4r045_owen",
+    "rel_path": "verify_probe/d4r045_00500.tif",
+    "expected_class": "student_cover",
+    "district": 4,
+    "expected_name": "Owen, Randall Horton"
+  },
+  {
+    "label": "cover_d5r065_bill",
+    "rel_path": "verify_probe/d5r065_00100.tif",
+    "expected_class": "student_cover",
+    "district": 5,
+    "expected_name": "(unknown — high signal)"
+  },
+  {
+    "label": "cover_d5r065_reus",
+    "rel_path": "verify_probe/d5r065_00500.tif",
+    "expected_class": "student_cover",
+    "district": 5,
+    "expected_name": "Reus, James C."
+  },
+  {
+    "label": "cover_d6r080_paulerson",
+    "rel_path": "verify_probe/d4r045_01700.tif",
+    "expected_class": "student_cover",
+    "district": 4,
+    "expected_name": "Paulerson, Rebecca"
+  },
+  {
+    "label": "cover_d6r080_continuation",
+    "rel_path": "verify_probe/d6r080_01100.tif",
+    "expected_class": "student_continuation",
+    "district": 6,
+    "expected_name": "(continuation page)"
+  }
+]

@@ -1,0 +1,10 @@
+[
+  {"Text": "What is the student's last name?",  "Alias": "LAST_NAME"},
+  {"Text": "What is the student's first name?", "Alias": "FIRST_NAME"},
+  {"Text": "Who is the student named on this page?", "Alias": "FULL_NAME"},
+  {"Text": "What name appears at the top of this page?", "Alias": "TOP_NAME"},
+  {"Text": "What is the name on this student record?", "Alias": "RECORD_NAME"},
+  {"Text": "What is the date of birth?", "Alias": "DOB"},
+  {"Text": "What is the place of birth?", "Alias": "POB"},
+  {"Text": "What is the school name?", "Alias": "SCHOOL"}
+]

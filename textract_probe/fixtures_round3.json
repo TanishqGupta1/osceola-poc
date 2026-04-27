@@ -1,0 +1,15 @@
+[
+  {"label": "clsamp_00024", "rel_path": "classification_samples/00024.tif", "expected_class": "student_cover", "expected_name": "Bunt, Judy"},
+  {"label": "clsamp_00029", "rel_path": "classification_samples/00029.tif", "expected_class": "student_cover", "expected_name": "Bryant, Darlene"},
+  {"label": "clsamp_00033", "rel_path": "classification_samples/00033.tif", "expected_class": "student_cover", "expected_name": "Burch, Fredrick Wayne"},
+  {"label": "clsamp_00035", "rel_path": "classification_samples/00035.tif", "expected_class": "student_cover", "expected_name": "Ackley, CAlvin Charles"},
+  {"label": "clsamp_00066", "rel_path": "classification_samples/00066.tif", "expected_class": "student_cover", "expected_name": "(unknown)"},
+  {"label": "clsamp_00068", "rel_path": "classification_samples/00068.tif", "expected_class": "student_cover", "expected_name": "(unknown)"},
+  {"label": "clsamp_00070", "rel_path": "classification_samples/00070.tif", "expected_class": "student_cover", "expected_name": "alexander, Earnestine"},
+  {"label": "clsamp_00119", "rel_path": "classification_samples/00119.tif", "expected_class": "student_cover", "expected_name": "(modern format)"},
+  {"label": "clsamp_00121", "rel_path": "classification_samples/00121.tif", "expected_class": "student_cover", "expected_name": "Harrod"},
+  {"label": "clsamp_00565", "rel_path": "classification_samples/00565.tif", "expected_class": "student_cover", "expected_name": "Markley, Jenelyn"},
+  {"label": "clsamp_00584", "rel_path": "classification_samples/00584.tif", "expected_class": "student_cover", "expected_name": "Markley, Judith"},
+  {"label": "clsamp_00670", "rel_path": "classification_samples/00670.tif", "expected_class": "student_cover", "expected_name": "Kenven Daniel Paul"},
+  {"label": "clsamp_00682", "rel_path": "classification_samples/00682.tif", "expected_class": "student_cover", "expected_name": "Kenyou DavidScoTT"}
+]

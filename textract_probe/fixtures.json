@@ -1,0 +1,50 @@
+[
+  {
+    "label": "cover_d1r001_card",
+    "rel_path": "test_input_roll001/00097.tif",
+    "expected_class": "student_cover",
+    "expected_fields": ["last", "first", "dob"]
+  },
+  {
+    "label": "test_sheet_d1r001",
+    "rel_path": "test_input_roll001/00193.tif",
+    "expected_class": "student_test_sheet",
+    "expected_fields": ["last", "first"]
+  },
+  {
+    "label": "continuation_d1r001",
+    "rel_path": "test_input_roll001/00289.tif",
+    "expected_class": "student_continuation",
+    "expected_fields": ["last", "first"]
+  },
+  {
+    "label": "index_d1r001_first",
+    "rel_path": "index_probe/broad/d1r001/00011.tif",
+    "expected_class": "student_records_index",
+    "expected_fields": ["index_rows"]
+  },
+  {
+    "label": "separator_styleA_clapper",
+    "rel_path": "boundary_probe/d2r012_00005.tif",
+    "expected_class": "roll_separator",
+    "expected_fields": ["start_or_end", "roll_no"]
+  },
+  {
+    "label": "separator_styleB_certificate",
+    "rel_path": "boundary_probe/t001_00005.tif",
+    "expected_class": "roll_separator",
+    "expected_fields": ["start_or_end", "roll_no", "filmer", "date"]
+  },
+  {
+    "label": "leader_letterhead_d3r028",
+    "rel_path": "boundary_probe/d3r028_00002.tif",
+    "expected_class": "roll_leader",
+    "expected_fields": []
+  },
+  {
+    "label": "leader_resolution_target_d5r064",
+    "rel_path": "boundary_probe/d5r064_00001.tif",
+    "expected_class": "roll_leader",
+    "expected_fields": []
+  }
+]

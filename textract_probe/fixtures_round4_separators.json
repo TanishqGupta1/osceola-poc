@@ -1,0 +1,13 @@
+[
+  {"label": "sepA_d2r020_f06", "rel_path": "index_probe/broad/d2r020/00006.tif", "expected_class": "roll_separator", "style": "A", "district": 2},
+  {"label": "sepB_d2r020_f07", "rel_path": "index_probe/broad/d2r020/00007.tif", "expected_class": "roll_separator", "style": "B", "district": 2},
+  {"label": "sepB_d3r032_f05", "rel_path": "index_probe/broad/d3r032/00005.tif", "expected_class": "roll_separator", "style": "B", "district": 3},
+  {"label": "sepA_d4r047_f05", "rel_path": "index_probe/broad/d4r047/00005.tif", "expected_class": "roll_separator", "style": "A", "district": 4},
+  {"label": "sepB_d4r047_f06", "rel_path": "index_probe/broad/d4r047/00006.tif", "expected_class": "roll_separator", "style": "B", "district": 4},
+  {"label": "sepA_d5r070_f05", "rel_path": "index_probe/broad/d5r070/00005.tif", "expected_class": "roll_separator", "style": "A", "district": 5},
+  {"label": "sepB_d5r070_f06", "rel_path": "index_probe/broad/d5r070/00006.tif", "expected_class": "roll_separator", "style": "B", "district": 5},
+  {"label": "sepA_d6r079_f05", "rel_path": "index_probe/broad/d6r079/00005.tif", "expected_class": "roll_separator", "style": "A", "district": 6},
+  {"label": "sepB_d6r079_f06", "rel_path": "index_probe/broad/d6r079/00006.tif", "expected_class": "roll_separator", "style": "B", "district": 6},
+  {"label": "sepA_d7r094_f05", "rel_path": "index_probe/broad/d7r094/00005.tif", "expected_class": "roll_separator", "style": "A", "district": 7},
+  {"label": "sepB_d7r094_f06", "rel_path": "index_probe/broad/d7r094/00006.tif", "expected_class": "roll_separator", "style": "B", "district": 7}
+]

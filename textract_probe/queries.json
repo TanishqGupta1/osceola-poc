@@ -1,0 +1,8 @@
+[
+  {"Text": "What is the student's last name?",  "Alias": "LAST_NAME"},
+  {"Text": "What is the student's first name?", "Alias": "FIRST_NAME"},
+  {"Text": "What is the student's middle name?", "Alias": "MIDDLE_NAME"},
+  {"Text": "What is the student's date of birth?", "Alias": "DOB"},
+  {"Text": "What is the school name?", "Alias": "SCHOOL"},
+  {"Text": "What is the roll number?", "Alias": "ROLL_NO"}
+]
