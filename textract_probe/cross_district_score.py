@@ -51,7 +51,9 @@ def aggregate_per_district(jsonl_path: Path) -> dict[int, Aggregate]:
             if not ln.strip():
                 continue
             r = json.loads(ln)
-            d = int(r.get("district", 0))
+            if "district" not in r:
+                raise KeyError(f"row missing 'district' field: {r}")
+            d = int(r["district"])
             a = aggs[d]
             a.district = d
             a.n_total += 1
