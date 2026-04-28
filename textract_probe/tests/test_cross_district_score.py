@@ -52,3 +52,18 @@ def test_aggregate_raises_on_missing_district(tmp_path):
 
     with pytest.raises(KeyError, match="district"):
         aggregate_per_district(jsonl)
+
+
+def test_aggregate_falls_back_to_label_when_district_missing(tmp_path):
+    jsonl = tmp_path / "labeled.jsonl"
+    jsonl.write_text("\n".join([
+        json.dumps({"label": "crossd_d3r032_00100", "page_class": "student_cover",
+                    "vote_confidence": 0.91, "spend_usd": 0.0885}),
+        json.dumps({"label": "crossd_d7r094_00150", "page_class": "roll_leader",
+                    "spend_usd": 0.0015}),
+    ]))
+
+    aggs = aggregate_per_district(jsonl)
+    assert aggs[3].n_covers == 1
+    assert aggs[3].n_shipped == 1
+    assert aggs[7].n_leaders == 1

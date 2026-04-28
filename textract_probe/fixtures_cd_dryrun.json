@@ -1,0 +1,82 @@
+[
+  {
+    "label": "crossd_d1r001_00100",
+    "rel_path": "cross_district_v4/d1r001/00100.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 100
+  },
+  {
+    "label": "crossd_d1r001_00101",
+    "rel_path": "cross_district_v4/d1r001/00101.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 101
+  },
+  {
+    "label": "crossd_d1r001_00102",
+    "rel_path": "cross_district_v4/d1r001/00102.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 102
+  },
+  {
+    "label": "crossd_d1r001_00103",
+    "rel_path": "cross_district_v4/d1r001/00103.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 103
+  },
+  {
+    "label": "crossd_d1r001_00104",
+    "rel_path": "cross_district_v4/d1r001/00104.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 104
+  },
+  {
+    "label": "crossd_d1r001_00105",
+    "rel_path": "cross_district_v4/d1r001/00105.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 105
+  },
+  {
+    "label": "crossd_d1r001_00106",
+    "rel_path": "cross_district_v4/d1r001/00106.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 106
+  },
+  {
+    "label": "crossd_d1r001_00107",
+    "rel_path": "cross_district_v4/d1r001/00107.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 107
+  },
+  {
+    "label": "crossd_d1r001_00108",
+    "rel_path": "cross_district_v4/d1r001/00108.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 108
+  },
+  {
+    "label": "crossd_d1r001_00109",
+    "rel_path": "cross_district_v4/d1r001/00109.tif",
+    "expected_class": null,
+    "district": 1,
+    "roll": "001",
+    "frame": 109
+  }
+]

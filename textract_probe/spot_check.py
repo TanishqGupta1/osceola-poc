@@ -14,8 +14,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
+
+LABEL_DISTRICT_RE = re.compile(r"^crossd_d(\d+)r")
+
+
+def _district_of(row: dict) -> int:
+    if "district" in row:
+        return int(row["district"])
+    m = LABEL_DISTRICT_RE.match(row.get("label", ""))
+    return int(m.group(1)) if m else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -33,7 +43,7 @@ def main(argv: list[str] | None = None) -> int:
                 continue
             if float(r.get("vote_confidence", 0)) < 0.70:
                 continue
-            by_d[int(r.get("district", 0))].append(r)
+            by_d[_district_of(r)].append(r)
 
     lines: list[str] = ["# V4 Cross-District Spot-Check", ""]
     for d in sorted(by_d):

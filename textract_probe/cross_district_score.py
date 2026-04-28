@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
 SHIP_GATE = 0.70
+
+LABEL_DISTRICT_RE = re.compile(r"^crossd_d(\d+)r")
 
 
 @dataclass
@@ -51,9 +54,15 @@ def aggregate_per_district(jsonl_path: Path) -> dict[int, Aggregate]:
             if not ln.strip():
                 continue
             r = json.loads(ln)
-            if "district" not in r:
-                raise KeyError(f"row missing 'district' field: {r}")
-            d = int(r["district"])
+            if "district" in r:
+                d = int(r["district"])
+            else:
+                m = LABEL_DISTRICT_RE.match(r.get("label", ""))
+                if not m:
+                    raise KeyError(
+                        f"row missing 'district' and label not parseable: {r.get('label','?')}"
+                    )
+                d = int(m.group(1))
             a = aggs[d]
             a.district = d
             a.n_total += 1

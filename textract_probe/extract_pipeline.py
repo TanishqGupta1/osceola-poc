@@ -218,7 +218,7 @@ def main(argv: list[str] | None = None) -> int:
     rows = []
     roll_index_acc: list[IndexRow] = []
 
-    with results_jsonl.open("w") as f:
+    with results_jsonl.open("w", buffering=1) as f:
         for fx in fixtures:
             if spend >= args.budget_ceiling:
                 print(
@@ -229,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
             r = _process_one(fx, queries, roll_index_acc)
             spend += r.get("spend_usd", 0.0)
             f.write(json.dumps(r, default=str) + "\n")
+            f.flush()
             rows.append(r)
             print(
                 f"OK {r['label']:<35} class={r.get('page_class','?'):<22} "
