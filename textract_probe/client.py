@@ -15,11 +15,12 @@ from textract_probe import env
 # AWS Textract pricing in us-west-2 as of 2026-04, per-page USD.
 # Source: https://aws.amazon.com/textract/pricing/
 TEXTRACT_PRICING_USD: dict[str, float] = {
-    "detect":  0.0015,
-    "forms":   0.05,
-    "tables":  0.015,
-    "layout":  0.004,
-    "queries": 0.015,
+    "detect":     0.0015,
+    "forms":      0.05,
+    "tables":     0.015,
+    "layout":     0.004,
+    "queries":    0.015,
+    "signatures": 0.004,
 }
 
 RETRYABLE_ERROR_CODES = {
@@ -146,3 +147,44 @@ def analyze_queries(
         op_name="analyze_queries",
         **kwargs,
     )
+
+
+def analyze_all(
+    png_bytes: bytes,
+    *,
+    queries: list[dict[str, str]] | None = None,
+    include_signatures: bool = True,
+    max_retries: int = 4,
+    retry_base_delay: float = 1.0,
+) -> tuple[dict[str, Any], float]:
+    """One-shot AnalyzeDocument call combining FORMS+TABLES+LAYOUT (+QUERIES, +SIGNATURES).
+
+    Same per-feature pricing as separate calls, single API roundtrip. Returns
+    (raw_response, total_usd_cost).
+    """
+    feature_types: list[str] = ["FORMS", "TABLES", "LAYOUT"]
+    cost_keys: list[str] = ["forms", "tables", "layout"]
+    extra_kwargs: dict[str, Any] = {}
+
+    if queries:
+        feature_types.append("QUERIES")
+        cost_keys.append("queries")
+        extra_kwargs["QueriesConfig"] = {"Queries": queries}
+    if include_signatures:
+        feature_types.append("SIGNATURES")
+        cost_keys.append("signatures")
+
+    client = env.textract_client()
+    kwargs: dict[str, Any] = {
+        "Document": {"Bytes": png_bytes},
+        "FeatureTypes": feature_types,
+    }
+    kwargs.update(extra_kwargs)
+    resp = _call_with_retry(
+        lambda: client.analyze_document(**kwargs),
+        max_retries=max_retries,
+        retry_base_delay=retry_base_delay,
+        op_name="analyze_all",
+    )
+    total_cost = sum(compute_textract_cost(k, 1) for k in cost_keys)
+    return resp, total_cost

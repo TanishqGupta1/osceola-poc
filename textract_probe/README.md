@@ -67,6 +67,18 @@ python3 -m textract_probe.tesseract_run \
 python3 -m textract_probe.decode \
     --in-dir textract_probe/output/textract \
     --out-dir textract_probe/output/digests
+
+# V4 end-to-end pipeline (router + classifier + voter + snap)
+python3 -m textract_probe.extract_pipeline \
+    --fixtures-file textract_probe/fixtures_round3.json \
+    --queries-file textract_probe/queries_v2.json \
+    --run-label round3_v4 \
+    --budget-ceiling 2.00
+
+# V4 replay — re-evaluate against existing JSONs (no live Textract calls)
+python3 -m textract_probe.replay \
+    --fixtures-file textract_probe/fixtures_round3.json \
+    --run-label round3_v4_replay
 ```
 
 ## Credentials

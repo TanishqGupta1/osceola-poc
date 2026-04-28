@@ -126,3 +126,49 @@ def test_analyze_queries_passes_queries_config(mock_factory):
 def test_analyze_queries_rejects_empty_queries():
     with pytest.raises(ValueError):
         tc.analyze_queries(b"PNG", queries=[])
+
+
+@patch("textract_probe.client.env.textract_client")
+def test_analyze_all_combined_call(mock_factory):
+    fake_resp = {"Blocks": [{"BlockType": "PAGE"}]}
+    fake_client = MagicMock()
+    fake_client.analyze_document.return_value = fake_resp
+    mock_factory.return_value = fake_client
+
+    queries = [{"Text": "Q1?", "Alias": "Q1"}]
+    resp, cost = tc.analyze_all(b"PNG", queries=queries, include_signatures=True)
+
+    assert resp == fake_resp
+    expected_cost = (
+        tc.TEXTRACT_PRICING_USD["forms"]
+        + tc.TEXTRACT_PRICING_USD["tables"]
+        + tc.TEXTRACT_PRICING_USD["layout"]
+        + tc.TEXTRACT_PRICING_USD["queries"]
+        + tc.TEXTRACT_PRICING_USD["signatures"]
+    )
+    assert cost == pytest.approx(expected_cost)
+    fake_client.analyze_document.assert_called_once_with(
+        Document={"Bytes": b"PNG"},
+        FeatureTypes=["FORMS", "TABLES", "LAYOUT", "QUERIES", "SIGNATURES"],
+        QueriesConfig={"Queries": queries},
+    )
+
+
+@patch("textract_probe.client.env.textract_client")
+def test_analyze_all_no_signatures_no_queries(mock_factory):
+    fake_client = MagicMock()
+    fake_client.analyze_document.return_value = {"Blocks": []}
+    mock_factory.return_value = fake_client
+
+    _, cost = tc.analyze_all(b"PNG", queries=None, include_signatures=False)
+
+    expected_cost = (
+        tc.TEXTRACT_PRICING_USD["forms"]
+        + tc.TEXTRACT_PRICING_USD["tables"]
+        + tc.TEXTRACT_PRICING_USD["layout"]
+    )
+    assert cost == pytest.approx(expected_cost)
+    fake_client.analyze_document.assert_called_once_with(
+        Document={"Bytes": b"PNG"},
+        FeatureTypes=["FORMS", "TABLES", "LAYOUT"],
+    )
