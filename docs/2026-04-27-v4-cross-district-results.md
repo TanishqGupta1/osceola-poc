@@ -22,6 +22,35 @@ D3 only 28 frames before halt (partial coverage).
 
 D4-D7 not measured this run — fixtures pulled (1400 TIFs total on disk under `samples/cross_district_v4/`) but pipeline stopped before reaching them.
 
+### 1b. D4-D7 follow-up run (`crossd_v4_d4_d7`, 190 frames before halt, $4.69)
+
+After garbage-filter + classifier improvements (commit `7f7eb0a`), ran V4 on D4-D7 mid-roll frames (frames 100-185 from rolls D4 R047, D5 R070, D6 R079). User halted at 190 frames before D7. Combined results below.
+
+| D   | total | cover | cont | test | idx | sep | lead | unk | ship | rate    | $    |
+|-----|-------|-------|------|------|-----|-----|------|-----|------|---------|------|
+| 4   | 86    | 26    | 18   | 12   | 0   | 2   | 24   | 4   | 21   | **80.8%** | 2.769 |
+| 5   | 86    | 13    | 19   | 38   | 0   | 8   | 6    | 2   | 12   | **92.3%** ✓ | 1.449 |
+| 6   | 18    | 5     | 4    | 5    | 0   | 2   | 2    | 0   | 3    | 60.0%   | 0.467 |
+| D7  | 0     | -     | -    | -    | -   | -   | -    | -   | -    | -       | -    |
+
+D5 hits 92.3% — highest cross-district ship rate observed. D6 partial (only 18 frames, small N). D7 not measured.
+
+### 1c. Combined 6-district aggregate (390 frames, $11.06)
+
+| D   | total | cover | shipped | rate    |
+|-----|-------|-------|---------|---------|
+| 1   | 86    | 35    | 29      | 82.9%   |
+| 2   | 86    | 19    | 15      | 78.9%   |
+| 3   | 28    | 3     | 2       | 66.7%   |
+| 4   | 86    | 26    | 21      | 80.8%   |
+| 5   | 86    | 13    | 12      | **92.3%** |
+| 6   | 18    | 5     | 3       | 60.0%   |
+| **ALL** | **390** | **101** | **82** | **81.2%** |
+
+**Median ship rate ~81%, range 78.9-92.3%** across the 4 districts with full 86-frame coverage (D1, D2, D4, D5). Consistent — V4 stack generalizes across district cover layouts without per-district tuning.
+
+D7 remains unmeasured.
+
 ## 2. Comparison to prior measured points
 
 | Run | Test set | Covers | Shipped | **Ship rate** | Notes |
