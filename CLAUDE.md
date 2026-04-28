@@ -8,7 +8,9 @@ This repo is the working directory for the **Osceola County School District POC*
 
 **Phase 1 POC status (2026-04-23): COMPLETE.** Pipeline ships end-to-end. Full ROLL 001 run (1924 TIFs, $9.89) measured accuracy, go/no-go gate hit at the high-precision operating point. Branch `phase1-poc-v2` merged to `main`. See `docs/2026-04-23-session-report.md` and `docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md` for numbers.
 
-## Repo structure (as of 2026-04-23)
+**Phase 2 Textract bake-off + V4 stack (2026-04-27): COMPLETE.** Pure-Textract + pure-code-logic pipeline built in isolated `textract_probe/` module — combined-call AnalyzeDocument + layout-fingerprint classifier + bbox-positional fallback + Tier 1 garbage filter + multi-source name voter + index-snap booster + per-class router. **No Bedrock, no Adapter training.** Replay-mode measured **90.9% precision** on 13 hand-verified covers (round 3) at conf ≥ 0.70 ship gate — meets the `docs/no-llm-90pct-design.md` §1 ≥90% target. 74 unit tests + 59 prior poc tests = 133 pass. See `docs/2026-04-27-textract-bake-off-results.md` (15 sections, 4 cost-projection revisions V0→V3) and `docs/superpowers/plans/2026-04-27-textract-code-logic-v4.md`.
+
+## Repo structure (as of 2026-04-27)
 
 ```
 ├── main.py                       # interactive S3 helper CLI (pre-POC tool)
@@ -27,6 +29,27 @@ This repo is the working directory for the **Osceola County School District POC*
 │   ├── run_poc.py                # full-pipeline CLI with $10 budget ceiling + spend JSONL
 │   ├── regroup.py                # re-eval from pages.jsonl, zero Bedrock $
 │   └── output/                   # run artifacts (gitignored — gitignored FERPA data)
+├── textract_probe/               # Phase 2 bake-off + V4 no-LLM pipeline (isolated, complete)
+│   ├── env.py                    # own .env.bedrock loader (Textract perms required)
+│   ├── convert.py                # own TIF -> PNG (no poc/ coupling)
+│   ├── client.py                 # Textract endpoints: detect/forms/tables/layout/queries +
+│   │                             # analyze_all combined-call + signatures pricing + retry
+│   ├── layout_classifier.py      # block-fingerprint -> page_class (deterministic, no keywords)
+│   ├── bbox_extract.py           # nearest-WORD-to-anchor fallback when Forms VALUE empty
+│   ├── validators.py             # Tier 1 garbage filter + name regex + DOB plausibility
+│   ├── name_voter.py             # multi-source confidence-weighted vote (Forms+Queries+Detect)
+│   ├── index_snap.py             # Tables -> IndexRow + Levenshtein last-name-only snap
+│   ├── router.py                 # two-pass cost-aware: Detect classify -> per-class extract
+│   ├── extract_pipeline.py       # live end-to-end CLI
+│   ├── replay.py                 # offline re-evaluation against cached JSONs (zero $$)
+│   ├── bake_off.py               # fixtures × features sweep CLI
+│   ├── tesseract_run.py          # local Tesseract comparison (Tesseract dead on this corpus)
+│   ├── decode.py                 # raw JSON -> per-fixture markdown digest
+│   ├── fixtures*.json            # 5 fixture manifests (round 1-4 + cross-district)
+│   ├── queries{,_v2}.json        # original + rephrased Textract Queries
+│   ├── tests/                    # 74 unit tests (mocked) + 1 gated live smoke
+│   ├── output/                   # raw JSONs + Tesseract files + V4 results — gitignored FERPA
+│   └── README.md                 # module docs + run commands
 ├── scripts/
 │   └── broad_index_probe.py      # 100-roll index-page detection probe
 ├── tests/                        # 59 unit tests (pytest), 6 smoke-skip
@@ -38,12 +61,18 @@ This repo is the working directory for the **Osceola County School District POC*
 │   ├── class-matrix.md                        # 32 subtypes × 13 feature dims
 │   ├── class-matrix.json                      # machine-readable subtype library
 │   ├── 2026-04-23-session-report.md           # full Phase 1 POC v2 session dump
+│   ├── 2026-04-27-textract-bake-off-results.md # bake-off + V4 measured results (15 sections)
+│   ├── no-llm-pipeline-brainstorm.md          # original deep brainstorm (V0)
+│   ├── no-llm-90pct-design.md                 # original Forms-KV-as-killer-feature design
+│   │                                          # — REVISED post-bake-off (see results doc §6,8)
 │   └── superpowers/
 │       ├── specs/2026-04-18-osceola-phase1-poc-design.md          # design spec v2
 │       ├── specs/2026-04-22-osceola-phase1-poc-v2-results.md      # measured results + go/no-go
 │       ├── specs/2026-04-21-osceola-production-pipeline.md        # Phase 2 spec
 │       ├── specs/2026-04-21-osceola-production-pipeline-v1-full.md
-│       └── plans/2026-04-22-osceola-phase1-poc-v2.md              # 13-task TDD plan
+│       ├── plans/2026-04-22-osceola-phase1-poc-v2.md              # 13-task TDD plan
+│       ├── plans/2026-04-27-textract-bake-off.md                  # bake-off harness plan
+│       └── plans/2026-04-27-textract-code-logic-v4.md             # V4 9-task TDD plan
 ├── .env                          # S3 creds (Servflow-image1) — gitignored
 └── .env.bedrock                  # Bedrock creds (tanishq account) — gitignored
 ```
@@ -73,6 +102,18 @@ python3 -m poc.regroup --roll-id "ROLL 001" \
 
 # Interactive S3 helper CLI (legacy)
 python3 main.py
+
+# textract_probe — V4 no-LLM stack
+pip install -r textract_probe/requirements.txt   # adds pytesseract; brew install tesseract
+pytest textract_probe/tests/ -q                   # 74 unit tests (mocked, no $$)
+TEXTRACT_SMOKE_TEST=1 pytest textract_probe/tests/test_smoke.py -v -s   # live, ~$0.0015
+python3 -m textract_probe.bake_off --fixtures-file textract_probe/fixtures.json \
+    --out-dir textract_probe/output/textract --features detect,forms,tables,layout,queries \
+    --queries-file textract_probe/queries.json --budget-ceiling 1.50
+python3 -m textract_probe.extract_pipeline --fixtures-file textract_probe/fixtures_round3.json \
+    --queries-file textract_probe/queries_v2.json --run-label round3_v4 --budget-ceiling 2.00
+python3 -m textract_probe.replay --fixtures-file textract_probe/fixtures_round3.json \
+    --run-label round3_v4_replay   # zero $$ re-eval against cached JSONs
 ```
 
 ## Architecture
@@ -174,11 +215,12 @@ Production should likely run `min_bucket_size=1` + Sonnet retry + Tier 1 validat
 
 ## Model / Infra Choices (already decided)
 
-- Vision model: **Claude Haiku 4.5 on AWS Bedrock** via inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Use `us.*` cross-region profile IDs, not raw model IDs.
+- Vision model (Phase 1): **Claude Haiku 4.5 on AWS Bedrock** via inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Use `us.*` cross-region profile IDs, not raw model IDs.
 - Haiku 4.5 quirk: wraps output in ` ```json ` fences in plain-text mode — POC uses `tool_use` schema which sidesteps this.
 - TIF→PNG: Pillow (in-memory, max side 1500px) in POC. Lambda in Phase 2.
-- Textract is **not** used — Bedrock vision only.
+- **Textract bake-off complete (2026-04-27).** Pure-Textract + code-logic V4 stack hits 90.9% precision on round-3 covers without LLM. Phase 2 path is **Detect everywhere + analyze_all on covers + Tables on indexes + Queries v2 on Style B separators + multi-source vote + index-snap**, no Bedrock retry needed for standard cover layouts. Bedrock retry stays as worst-case escape only.
 - n8n host: `dev-n8n.visualgraphx.com`, using the `makafeli/n8n-workflow-builder` MCP server (Phase 2 HITL UI).
+- `.env.bedrock` IAM user (tanishq acct, account 690816807846) needs **both** Bedrock and Textract perms. AWS access keys rotated 2026-04-27 — verify with `TEXTRACT_SMOKE_TEST=1 pytest textract_probe/tests/test_smoke.py` before running pipeline live.
 
 Do not reopen these decisions without the user's sign-off.
 
@@ -208,12 +250,23 @@ For Phase 2 at 218K-TIF scale, the recommended stack is **Step Functions Distrib
 ## Resolved blockers
 
 - ~~IAM Bedrock permissions missing on `Servflow-image1`~~ — resolved 2026-04-20 via separate `tanishq` user in account `690816807846`. Dual-env loader is the integration. `Servflow-image1` still lacks Bedrock; still has S3.
+- ~~Textract permissions on `tanishq` user~~ — resolved 2026-04-27. `AmazonTextractFullAccess` (or scoped `textract:DetectDocumentText, textract:AnalyzeDocument`) attached. Verify via gated smoke test in `textract_probe/`.
+
+## Open issues
+
+- **Modern multi-section covers** (clsamp_00119, D6 Paulerson family) — Forms KV detects `LAST` / `FIRST` / `MIDDLE` labels but cannot pair to boxed handwriting on faded scans. Recovery: build `poc/preprocess.py` (Pillow deskew + Sauvola binarize + erode 1px). No LLM needed.
+- **Co-record covers** (D5 Reus joint-parent layout) — voter picks one parent's name. Recovery: splitter rule on `&` / ` and ` / multi-comma patterns.
+- **AWS creds rotation** — `.env.bedrock` keys rotate periodically. Smoke test before any live pipeline run.
 
 ## Agent hints
 
 When editing pipeline modules:
-- Run `pytest -q` before committing. 59 tests should stay green.
-- Never bypass `poc.env` for AWS client construction.
-- Reuse `gt_clean.clean_gt_filename` — do not re-implement GT parsing.
+- Run `pytest -q` before committing. **133 tests** should stay green (59 `tests/` + 74 `textract_probe/tests/`).
+- Never bypass `poc.env` for AWS client construction in `poc/`.
+- Never bypass `textract_probe.env` for Textract calls.
+- `textract_probe/` is **fully isolated** — no `from poc.*` imports. Keep it that way; the module is delete-as-a-unit if abandoned.
+- Reuse `gt_clean.clean_gt_filename` (in `poc/`) — do not re-implement GT parsing.
 - Grouping behavior is a user-visible contract. Changes to `group.py` need test updates.
-- Re-evals are zero-cost via `poc.regroup`. Use that before re-running the full Bedrock classify pass.
+- Re-evals are zero-cost via `poc.regroup` (LLM path) or `textract_probe.replay` (V4 path against cached Textract JSONs). Use either before re-running expensive live passes.
+- V4 ship gate is **vote_confidence ≥ 0.70 (multi-source agreement ≥ 2)**. Locked in `textract_probe/replay.py`. Don't lower without measuring precision regression on round 3.
+- New garbage tokens go in `textract_probe/validators.py::GARBAGE_TOKENS`. Add tests in `tests/test_validators.py`.

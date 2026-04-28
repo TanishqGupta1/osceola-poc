@@ -4,9 +4,10 @@ AI pipeline to classify and extract data from **218,577 TIF scans** of student r
 
 Client: Osceola County School District.
 Source: `s3://servflow-image-one/Osceola Co School District/` (us-west-2).
-Model: **Claude Haiku 4.5 on AWS Bedrock** via inference profile `us.anthropic.claude-haiku-4-5-20251001-v1:0`. Bedrock vision only — no Textract.
 
-**Phase 1 POC status (2026-04-23): COMPLETE.** Pipeline shipped end-to-end. Full ROLL 001 run (1924 TIFs, $9.89) measured. Go/no-go gate met at high-precision operating point. Details in `docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md`.
+**Two pipelines:**
+- **Phase 1 (LLM path):** Claude Haiku 4.5 on AWS Bedrock, single-call classify+extract via `tool_use`. Implemented in `poc/`. **COMPLETE 2026-04-23** — 87.1% precision @ high-confidence gate on ROLL 001. Details in `docs/superpowers/specs/2026-04-22-osceola-phase1-poc-v2-results.md`.
+- **Phase 2 (no-LLM path):** AWS Textract combined-call + Python rules. Implemented in `textract_probe/` (isolated module). **VALIDATED 2026-04-27** — 90.9% precision on 13 hand-verified covers via multi-source name vote + index-snap, no Bedrock retry. Bake-off + measured results in `docs/2026-04-27-textract-bake-off-results.md`.
 
 **Data notes:**
 - 100 rolls across 7 districts. Gaps: ROLL 048, 100. Splits: 065B, 075A. Partials: 059, 101.

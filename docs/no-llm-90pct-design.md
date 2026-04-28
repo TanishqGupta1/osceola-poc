@@ -1,6 +1,8 @@
 # No-LLM Pipeline — 90% Accuracy Design (Textract + code only)
 
-**Date:** 2026-04-23
+> **STATUS UPDATE (2026-04-27):** This design's load-bearing claim — "Forms KV is the killer feature" — was **partially falsified** by the bake-off in `docs/2026-04-27-textract-bake-off-results.md`. Forms KV detects labels but cannot pair handwritten values on faded 1990s microfilm in many cover layouts. The corrected V4 stack (`textract_probe/`) replaces Forms-as-primary with **Queries v2 (rephrased questions: RECORD_NAME / TOP_NAME / FULL_NAME) + Detect bbox-positional fallback + Tables-snap booster**, and hits **90.9% precision** on 13 hand-verified covers without any Bedrock retry. Read this design doc for context, then read the results doc §6 (cost projection V0→V3), §7 (locked feature-set), §8 (final decision), §12 (round-2 reversal), §13 (round-3 validation), §15 (V4 measured results) for the current shipped design.
+
+**Date:** 2026-04-23 (original) — supplemented by §15 measured results 2026-04-27
 **Constraint:** ≥ **90% precision** on shipped output. Pure Textract OCR JSON + Python rules. Zero LLM calls.
 **Trade:** willing to spend more on Textract and route more pages to HITL to lock precision.
 
