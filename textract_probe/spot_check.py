@@ -26,14 +26,8 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     by_d: dict[int, list[dict]] = defaultdict(list)
-    if not args.results_jsonl.exists():
-        print(f"Error: {args.results_jsonl} not found.")
-        return 1
-
     with open(args.results_jsonl) as f:
         for ln in f:
-            if not ln.strip():
-                continue
             r = json.loads(ln)
             if r.get("page_class") != "student_cover":
                 continue
@@ -46,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         rows = sorted(
             by_d[d], key=lambda x: -float(x.get("vote_confidence", 0))
         )[: args.top_n]
-        lines.append(f"## District {d} — top {len(rows)} ships")
+        lines.append(f"## District {d} - top {len(rows)} ships")
         lines.append("")
         lines.append("| label | name | conf | agree | sources | rel_path |")
         lines.append("|---|---|---|---|---|---|")
@@ -60,7 +54,6 @@ def main(argv: list[str] | None = None) -> int:
             )
         lines.append("")
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text("\n".join(lines))
     print(f"OK wrote spot-check to {args.output}")
     return 0
