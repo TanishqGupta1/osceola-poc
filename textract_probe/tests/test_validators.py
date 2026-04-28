@@ -22,6 +22,11 @@ from textract_probe import validators as v
     ("FATHER's name",         False),
     ("MOTHER",                False),
     ("(LAST)",                False),
+    ("Anderson Lost",         False),
+    ("Batan Lost",            False),
+    ("DISEASE",               False),
+    ("Babin Permits Retained", False),
+    ("WITHDRAWAL",            False),
 ])
 def test_is_valid_student_name(name, ok):
     assert v.is_valid_student_name(name) is ok

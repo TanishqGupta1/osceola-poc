@@ -106,13 +106,15 @@ def classify(resp: dict[str, Any]) -> tuple[str, float, dict[str, int]]:
         return "student_test_sheet", 0.75, fp
 
     cover_hits = sum(1 for p in COVER_LABEL_PATTERNS if p in text_u)
-    if cover_hits >= 2 and n_lines >= 40:
+    # Tightened: require >=3 cover-label hits OR >=2 hits with >=80 LINEs.
+    # Earlier 2/40 threshold over-routed continuation pages -> needless analyze_all.
+    if cover_hits >= 3 or (cover_hits >= 2 and n_lines >= 80):
         return "student_cover", 0.80, fp
 
     if 25 <= n_lines <= 80 and cover_hits < 2:
         return "roll_leader", 0.65, fp
 
-    if n_lines >= 80 and cover_hits == 0:
+    if n_lines >= 80 and cover_hits < 2:
         return "student_continuation", 0.60, fp
 
     return "unknown", 0.30, fp
